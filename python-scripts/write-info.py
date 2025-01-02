@@ -16,7 +16,7 @@ DefaultFont = path.join(DIR_PATH, "Fonts/GothamLight.ttf")
 
 class read_rfid:
     def read_rfid (self):
-        ser = serial.Serial ("/dev/ttyS0")                           #Open named port 
+        ser = serial.Serial ("/dev/ttyAMA0")                           #Open named port 
         ser.baudrate = 9600                                            #Set baud rate to 9600
         data = ser.read(12)                                            #Read 12 characters from serial port to data
         if(data != " "):
