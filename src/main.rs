@@ -19,9 +19,33 @@
 //              - [2] - View Current Invoices
 //              - [3] - View Current Employees
 //              - [4] - Exit 
+mod lib;
+use std::collections::btree_map::Iter;
 
-use std::io;
+use lib::*;
+
+mod boat;
+use boat::*;
+
+mod input;
+use input::*;
 
 fn main() {
+    print!("Please enter a boat name: ");
+    clear_screen();
+    let mut boat1: Boat = Boat::new(cap_input());
     
+    boat1.query_user();
+    boat1.query_user();
+    boat1.query_user();
+
+    let mut i = 0;
+    for item in boat1.task {
+        i += 1;
+
+        print!("[{}] - {} - {}\n", 
+        i,
+        item.task_number, 
+        item.department)
+    }
 }
