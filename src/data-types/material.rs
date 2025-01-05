@@ -11,12 +11,12 @@
         - Inventory Re order point 
 */
 
-enum Material {
-    PartNumber(u32),
-    VendorInfo(String),
-    Description(String),
+pub struct Material {
+    part_number: String,
+    vendor_info: String,
+    description: String,
     //Departments(???),
-    StockLevel(i32),
-    StockSetPoint(i32),
-    StockReorderPoint(i32),
+    stock_level: i32,
+    stock_set_point: i32,
+    stock_reorder_point: i32,
 }

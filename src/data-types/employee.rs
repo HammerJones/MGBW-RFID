@@ -18,15 +18,20 @@
         - Assign equipment
         - Check out material & archive
 */
-#[Path = "./data-types/equipment.rs"]
-use Equipment::*;
+#[path = "./equipment.rs"]
+mod equipment;
+use equipment::Equipment;
 
-enum Employee {
-    Name { first: String, last: String },
-    EmployeeID(String),
-    EmploymentDate(String),
+pub struct EmployeeName {
+    pub first: String,
+    pub last: String,
+}
+pub struct Employee {
+    pub name: EmployeeName,
+    pub employee_id: String,
+    pub employment_date: String,
     //CurrentJob(???) <- Can I make this a task number? Will having the task enum having employee enums assigned to it create a circular dependency if the employee also stores which task they're assigned to?
     //JobHistory(???) <- How can I store a section of the log inside the employee object?
-    EquipmentList(vec<Equipment>)
+    pub equipment_list: Vec<Equipment>
     //MaterialHistory(???) <- How can I store a section of the log inside the employee object?
 }

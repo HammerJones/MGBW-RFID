@@ -9,9 +9,18 @@
         - Check Out History 
 */
 
-enum Equipment {
-    Type(String, String),
-    Serial(String),
-    PurchaseDate(String),
-    RepairHistory(String),
+//pub enum Equipment {
+//    Type{category: String, make: String, model: String},
+//    Serial(String),
+//    PurchaseDate(String),
+//    RepairHistory(String),
+//}
+
+pub struct Equipment {
+    pub category: String,
+    pub brand: String,
+    pub model: String,
+    pub serial: String,
+    pub purchase_date: String,
+    pub repair_history: String,
 }

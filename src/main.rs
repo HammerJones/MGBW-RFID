@@ -19,36 +19,10 @@
 //              - [2] - View Current Invoices
 //              - [3] - View Current Employees
 //              - [4] - Exit
+mod lib;
+
 use std::io;
 
-fn cap_input() -> String {
-
-    let mut output = String::new();
-    
-    io::stdin().read_line(&mut output).expect("Failed to Capture User Input");
-
-    output.trim().to_string()
-}
-
-fn write_new_id() {
-    //Input first name
-    println!("Please Input Employee's First Name: ");
-    let first = cap_input();
-    
-    //Input last name
-    println!("Please Input Employee's Last Name: ");
-    let last = cap_input();
-
-    //Input Boat
-    println!("Please Input Employee's Current Boat Name: ");
-    let boat = cap_input();
-
-    //Input Task Number
-    println!("Please Input Employee's Task Number: ");
-    let task = cap_input();
-
-    print!("{} {}: {} - {}", first, last, boat, task);
-}
 fn main() {
-    write_new_id();
+    
 }

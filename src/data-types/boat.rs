@@ -12,11 +12,12 @@
         - Employees assigned to task numbers
         - Equipment/Materials assigned to employees
 */
-#[path="./data-types/employee.rs"]
-use Employee::*;
+#[path="./employee.rs"]
+mod employee;
+use employee::Employee;
 
-enum Boat {
-    Name(String),
-    TaskNumbers(vec<String>),
-    Employees(vec<Employee>)
+pub struct Boat {
+    pub name: String,
+    pub task_numbers: Vec<String>,
+    pub employees: Vec<Employee>,
 }
