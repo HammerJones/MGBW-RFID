@@ -1,9 +1,12 @@
-#[path="./employee.rs"]
-mod employee;
+#![allow(dead_code)]
+#![allow(unused_imports)]
 
-#[path="./machine.rs"]
-mod machine;
+//#[path="./employee.rs"]
+//mod employee;
+
+//#[path="./machine.rs"]
+//mod machine;
 
 #[path="./boat.rs"]
 pub mod boat;
-use boat::*;
+use boat::{Task, Yard};
