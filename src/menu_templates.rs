@@ -1,7 +1,7 @@
 use std::{io, net::Incoming};
 
 #[path="./lib.rs"]
-use mod lib;
+mod lib;
 use lib::Initialize;
 
 
