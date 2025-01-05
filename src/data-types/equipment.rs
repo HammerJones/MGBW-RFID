@@ -15,12 +15,3 @@
 //    PurchaseDate(String),
 //    RepairHistory(String),
 //}
-
-pub struct Equipment {
-    pub category: String,
-    pub brand: String,
-    pub model: String,
-    pub serial: String,
-    pub purchase_date: String,
-    pub repair_history: String,
-}

@@ -12,12 +12,3 @@
         - Employees assigned to task numbers
         - Equipment/Materials assigned to employees
 */
-#[path="./employee.rs"]
-mod employee;
-use employee::Employee;
-
-pub struct Boat {
-    pub name: String,
-    pub task_numbers: Vec<String>,
-    pub employees: Vec<Employee>,
-}

@@ -18,8 +18,7 @@
 //              - [1] - View Current Equipment
 //              - [2] - View Current Invoices
 //              - [3] - View Current Employees
-//              - [4] - Exit
-mod lib;
+//              - [4] - Exit 
 
 use std::io;
 
