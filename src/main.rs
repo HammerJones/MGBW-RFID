@@ -19,22 +19,60 @@
 //              - [2] - View Current Invoices
 //              - [3] - View Current Employees
 //              - [4] - Exit 
+
+#![allow(nonstandard_style)]
 #![allow(dead_code)]
+#![allow(special_module_name)]
 #![allow(unused_imports)]
 
-use std::collections::{btree_map::Iter, HashMap};
+use std::collections::HashMap;
+mod menu;
+use crate::menu::input::{cap_input, clear_screen};
 
-mod lib;
-use lib::boat::Task;
+//use k_board::{keyboard::Keyboard, keys::Keys};
 
-//mod boat;
-//use boat::Boat;
 
-mod input;
-use input::*;
+ pub struct Equipment {
+    pub line_item: HashMap<String, String>,
+    pub menu_item: HashMap<i32, String>,
+}
+
+impl Equipment {
+    pub fn new() -> Self {
+        Equipment {
+            line_item: HashMap::new(),
+            menu_item: HashMap::new(),
+        }
+    }
+    pub fn create_new_field(&mut self) {
+        let input1: String;
+        let input2: String;
+
+        print!("Please enter field name: ");
+        clear_screen();
+        input1 = cap_input();
+
+        print!("Please enter field value: ");
+        clear_screen();
+        input2 = cap_input();
+
+        self.line_item.insert(input1, input2);
+    }
+    pub fn query_user(&mut self) {
+        print!("Would you like to create a new field?\n[y/n]\n");
+        clear_screen();
+        while cap_input() == "y" {
+            self.create_new_field();
+            print!("Would you like to create a new field?\n[y/n]\n");
+        }
+        for (key, value) in self.line_item.clone().into_iter() {
+            print!("{} - {}\n", key, value);
+            clear_screen()
+        }
+    }
+}
 
 fn main() {
-    let test: Task = Task::new();
-
-    test.add_task();
+    let mut xmt1: Equipment = Equipment::new();
+    xmt1.query_user();
 }
