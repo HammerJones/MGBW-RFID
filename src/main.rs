@@ -58,6 +58,7 @@ impl Equipment {
 
         self.line_item.insert(input1, input2);
     }
+    
     pub fn query_user(&mut self) {
         print!("Would you like to create a new field?\n[y/n]\n");
         clear_screen();
