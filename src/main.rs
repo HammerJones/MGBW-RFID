@@ -26,54 +26,64 @@
 #![allow(unused_imports)]
 
 use std::collections::HashMap;
-mod menu;
-use crate::menu::input::{cap_input, clear_screen};
 
 //use k_board::{keyboard::Keyboard, keys::Keys};
 
-
- pub struct Equipment {
-    pub line_item: HashMap<String, String>,
-    pub menu_item: HashMap<i32, String>,
+enum WeldingMachine {
+    miller_xmt(HashMap<String, String>),
+    miller_suitcase(HashMap<String, String>),
+    powermax_plasma(HashMap<String, String>),
+    dynasty_tig(HashMap<String, String>),
 }
 
-impl Equipment {
-    pub fn new() -> Self {
-        Equipment {
-            line_item: HashMap::new(),
-            menu_item: HashMap::new(),
+enum WeldingGun {
+    mig_gun(HashMap<String, String>),
+    spool_gun(HashMap<String, String>),
+    tig_gun(HashMap<String, String>),
+    plasma_gun(HashMap<String, String>),
+}
+
+enum Tooling {
+    flow_meter(HashMap<String, String>),
+    chain_fall(HashMap<String, String>),
+    come_along(HashMap<String, String>),
+    vacuum(HashMap<String, String>),
+}
+
+enum Category {
+    welding_machine(Option<WeldingMachine>),
+    welding_gun(WeldingGun),
+    tooling(Tooling),
+}
+
+struct EquipmentType {
+    category: Option<Category>,
+    purchase_date: String,
+    repair_history: Vec<String>,
+}
+
+impl EquipmentType {
+    fn new(category: String, name: String) -> Self {
+        let output: EquipmentType;
+
+
+        match category {
+            _ => None,
+            String::from("Welding Machine") => output.category = EquipmentType::
+        }
+        
+        EquipmentType {
+            category: None,
+            purchase_date: String::new(),
+            repair_history: Vec::new(),
         }
     }
-    pub fn create_new_field(&mut self) {
-        let input1: String;
-        let input2: String;
 
-        print!("Please enter field name: ");
-        clear_screen();
-        input1 = cap_input();
-
-        print!("Please enter field value: ");
-        clear_screen();
-        input2 = cap_input();
-
-        self.line_item.insert(input1, input2);
-    }
-    
-    pub fn query_user(&mut self) {
-        print!("Would you like to create a new field?\n[y/n]\n");
-        clear_screen();
-        while cap_input() == "y" {
-            self.create_new_field();
-            print!("Would you like to create a new field?\n[y/n]\n");
-        }
-        for (key, value) in self.line_item.clone().into_iter() {
-            print!("{} - {}\n", key, value);
-            clear_screen()
-        }
+    fn init(&mut self, category: String, name: String) {
+        
     }
 }
 
 fn main() {
-    let mut xmt1: Equipment = Equipment::new();
-    xmt1.query_user();
+    
 }

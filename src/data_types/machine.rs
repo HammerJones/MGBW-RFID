@@ -3,11 +3,25 @@
 
 use std::collections::HashMap;
 
-pub struct Equipment {
-    pub line_item: HashMap<String, String>,
-    pub menu_item: HashMap<i32, String>,
+#[path="./menu/input.rs"]
+use crate::menu::input::*;
+/*
+enum Category {
+    welding_machine(WeldingMachine),
+}
+enum WeldingMachine {
+    miller_xmt(HashMap<String, String>),
+    miller_suitcase(HashMap<String, String>),
+    powermax_plasma(HashMap<String, String>),
+    dynasty_tig(HashMap<String, String>),
 }
 
+pub struct Equipment {
+    pub category: Category,
+}
+*/
+
+/* 
 impl Equipment {
     pub fn new() -> Self {
         Equipment {
@@ -15,6 +29,7 @@ impl Equipment {
             menu_item: HashMap::new(),
         }
     }
+
     pub fn create_new_field(&mut self) {
         let input1: String;
         let input2: String;
@@ -29,16 +44,18 @@ impl Equipment {
 
         self.line_item.insert(input1, input2);
     }
+
     pub fn query_user(&mut self) {
         print!("Would you like to create a new field?\n[y/n]\n");
         clear_screen();
-        if cap_input() == "y" {
+        while cap_input() == "y" {
             self.create_new_field();
-        } if cap_input() == "n" {
-            for (key, value) in self.line_item.clone().into_iter() {
-                print!("{} - {}", key, value);
-                clear_screen();
-            }
+            print!("Would you like to create a new field?\n[y/n]\n");
+        }
+        for (key, value) in self.line_item.clone().into_iter() {
+            print!("{} - {}\n", key, value);
+            clear_screen()
         }
     }
 }
+*/
