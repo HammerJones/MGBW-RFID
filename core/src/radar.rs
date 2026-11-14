@@ -20,7 +20,7 @@ fn wms(region: &str) -> String {
     format!("{GEOSERVER}/{region}/{region}_bref_qcd/ows")
 }
 
-/// A MapLibre raster-tile URL template. `time` is one of `radar_times`,
+/// A raster-tile URL template with a `{bbox-epsg-3857}` placeholder. `time` is one of `radar_times`,
 /// or `None` for the latest frame.
 pub fn tile_template(region: &str, time: Option<&str>) -> String {
     let mut url = format!(

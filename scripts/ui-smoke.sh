@@ -48,7 +48,7 @@ sleep 1
 tap "Vail" && sleep 30
 shot 04-home-one-card
 
-tap "Add resort" && sleep 2
+(tap "Add resort" || adb shell input tap 890 2220) && sleep 2
 tap "Resort or state" && sleep 1
 adb shell input text "killington" && sleep 3
 adb shell input keyevent 111

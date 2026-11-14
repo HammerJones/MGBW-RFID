@@ -1,6 +1,10 @@
 package com.hammerjones.snowtrack.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -34,43 +38,54 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import org.maplibre.android.MapLibre
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.layers.RasterLayer
-import org.maplibre.android.style.sources.RasterSource
-import org.maplibre.android.style.sources.TileSet
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.MapTileProviderBasic
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.TilesOverlay
 import uniffi.snowtrack_core.SnowTrack
 
 private const val RADAR_OPACITY = 0.75f
+private const val WORLD = 20037508.342789244
 
-/** USGS topo base map with a dot on the resort. Radar layers are added on top in code. */
-private fun styleJson(lat: Double, lon: Double): String = """
-{
-  "version": 8,
-  "sources": {
-    "base": {
-      "type": "raster",
-      "tiles": ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"],
-      "tileSize": 256,
-      "maxzoom": 16,
-      "attribution": "USGS The National Map · Radar: NOAA/NWS MRMS"
-    },
-    "resort": {
-      "type": "geojson",
-      "data": {"type": "Feature", "geometry": {"type": "Point", "coordinates": [$lon, $lat]}, "properties": {}}
-    }
-  },
-  "layers": [
-    {"id": "base", "type": "raster", "source": "base", "paint": {"raster-saturation": -0.35}},
-    {"id": "resort", "type": "circle", "source": "resort",
-     "paint": {"circle-radius": 6, "circle-color": "#0B1420", "circle-stroke-color": "#FFFFFF", "circle-stroke-width": 2.5}}
-  ]
+/** USGS The National Map topo tiles: public domain, no key. */
+private object UsgsTopo : OnlineTileSourceBase(
+    "USGSTopo", 0, 16, 256, "",
+    arrayOf("https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/"),
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex)
 }
-""".trimIndent()
+
+/**
+ * NOAA radar served as WMS: each tile asks for its own Web-Mercator bounding
+ * box. [name] doubles as the cache key, so every frame gets its own.
+ */
+private class RadarSource(name: String, private val template: String) :
+    OnlineTileSourceBase(name, 0, 11, 256, ".png", arrayOf(template)) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        val z = MapTileIndex.getZoom(pMapTileIndex)
+        val size = 2 * WORLD / (1 shl z)
+        val minX = -WORLD + MapTileIndex.getX(pMapTileIndex) * size
+        val maxY = WORLD - MapTileIndex.getY(pMapTileIndex) * size
+        val bbox = String.format(Locale.US, "%.3f,%.3f,%.3f,%.3f", minX, maxY - size, minX + size, maxY)
+        return template.replace("{bbox-epsg-3857}", bbox)
+    }
+}
+
+private fun radarOverlay(context: Context, map: MapView, name: String, template: String): TilesOverlay {
+    val provider = MapTileProviderBasic(context, RadarSource(name, template))
+    provider.tileRequestCompleteHandlers.add(map.tileRequestCompleteHandler)
+    return TilesOverlay(provider, context).apply {
+        loadingBackgroundColor = Color.TRANSPARENT
+        loadingLineColor = Color.TRANSPARENT
+        setColorFilter(ColorMatrixColorFilter(ColorMatrix().apply { setScale(1f, 1f, 1f, RADAR_OPACITY) }))
+    }
+}
 
 private fun frameLabel(time: String?): String {
     if (time == null) return "Latest radar"
@@ -91,60 +106,65 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var style by remember { mutableStateOf<Style?>(null) }
     var frames by remember { mutableStateOf<List<String>>(emptyList()) }
-    var framesAdded by remember { mutableStateOf(false) }
+    var frameOverlays by remember { mutableStateOf<List<TilesOverlay>>(emptyList()) }
     var index by remember { mutableIntStateOf(-1) } // -1 = the "latest" layer
     var playing by remember { mutableStateOf(false) }
 
     val mapView = remember {
-        MapLibre.getInstance(context)
+        Configuration.getInstance().apply {
+            load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+            userAgentValue = "SnowTrack/0.1 (github.com/HammerJones)"
+            tileFileSystemCacheMaxBytes = 60L * 1024 * 1024
+            tileFileSystemCacheTrimBytes = 40L * 1024 * 1024
+        }
         MapView(context).apply {
+            setTileSource(UsgsTopo)
+            setMultiTouchControls(true)
+            isTilesScaledToDpi = true
+            isHorizontalMapRepetitionEnabled = false
+            isVerticalMapRepetitionEnabled = false
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            minZoomDouble = 3.0
+            maxZoomDouble = 11.0
+            controller.setZoom(6.5)
+            controller.setCenter(GeoPoint(lat, lon))
             // Let the map pan and zoom even though it sits inside a scrolling page.
             setOnTouchListener { view, _ ->
                 view.parent?.requestDisallowInterceptTouchEvent(true)
                 false
             }
-            getMapAsync { map ->
-                map.uiSettings.isRotateGesturesEnabled = false
-                map.uiSettings.isTiltGesturesEnabled = false
-                map.setMaxZoomPreference(11.0)
-                map.setMinZoomPreference(3.0)
-                map.cameraPosition = CameraPosition.Builder().target(LatLng(lat, lon)).zoom(6.3).build()
-                map.setStyle(Style.Builder().fromJson(styleJson(lat, lon))) { loaded ->
-                    loaded.addSource(RasterSource("radar-latest", TileSet("2.1.0", core.radarTileTemplate(lat, lon, null)), 256))
-                    loaded.addLayerBelow(
-                        RasterLayer("radar-latest", "radar-latest").withProperties(
-                            PropertyFactory.rasterOpacity(RADAR_OPACITY),
-                            PropertyFactory.rasterFadeDuration(0f),
-                        ),
-                        "resort",
-                    )
-                    style = loaded
+        }
+    }
+    // The newest frame changes every couple of minutes; a time bucket in the
+    // name keeps an old cached copy from being shown as "latest".
+    val latest = remember {
+        val bucket = System.currentTimeMillis() / (5 * 60 * 1000)
+        radarOverlay(context, mapView, "radar-latest-$bucket", core.radarTileTemplate(lat, lon, null)).also { overlay ->
+            mapView.overlays.add(overlay)
+            mapView.overlays.add(
+                Marker(mapView).apply {
+                    position = GeoPoint(lat, lon)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    setInfoWindow(null)
                 }
-            }
+            )
         }
     }
 
-    // MapView needs to follow the screen's lifecycle.
     DisposableEffect(lifecycleOwner, mapView) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
                 Lifecycle.Event.ON_RESUME -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
                 else -> Unit
             }
         }
-        mapView.onCreate(null)
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            style = null
             mapView.onPause()
-            mapView.onStop()
-            mapView.onDestroy()
+            mapView.onDetach()
         }
     }
 
@@ -159,39 +179,32 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
     }
 
     // Add one hidden layer per frame the first time the user presses play.
-    LaunchedEffect(style, frames, playing) {
-        val s = style ?: return@LaunchedEffect
-        if (!playing || framesAdded || frames.isEmpty()) return@LaunchedEffect
-        frames.forEachIndexed { i, time ->
-            s.addSource(RasterSource("radar-$i", TileSet("2.1.0", core.radarTileTemplate(lat, lon, time)), 256))
-            s.addLayerBelow(
-                RasterLayer("radar-$i", "radar-$i").withProperties(
-                    PropertyFactory.rasterOpacity(0f),
-                    PropertyFactory.rasterFadeDuration(0f),
-                ),
-                "resort",
-            )
+    LaunchedEffect(frames, playing) {
+        if (!playing || frameOverlays.isNotEmpty() || frames.isEmpty()) return@LaunchedEffect
+        val region = if (lat > 50) "ak" else if (lat < 23) "hi" else "us"
+        val added = frames.map { time ->
+            val name = "radar-$region-" + time.filter { it.isLetterOrDigit() }
+            radarOverlay(context, mapView, name, core.radarTileTemplate(lat, lon, time)).apply { isEnabled = false }
         }
-        framesAdded = true
+        // Keep the marker on top.
+        val at = (mapView.overlays.size - 1).coerceAtLeast(0)
+        mapView.overlays.addAll(at, added)
+        frameOverlays = added
     }
 
-    LaunchedEffect(playing, framesAdded) {
-        if (!playing || !framesAdded) return@LaunchedEffect
-        // Give the first pass time to download tiles, then loop, pausing on the newest frame.
+    LaunchedEffect(playing, frameOverlays) {
+        if (!playing || frameOverlays.isEmpty()) return@LaunchedEffect
+        // Loop through the frames, pausing on the newest.
         while (true) {
             index = if (index < 0 || index >= frames.lastIndex) 0 else index + 1
-            delay(if (index == frames.lastIndex) 1600 else 650)
+            delay(if (index == frames.lastIndex) 1600 else 700)
         }
     }
 
-    LaunchedEffect(index, framesAdded, style) {
-        val s = style ?: return@LaunchedEffect
-        s.getLayer("radar-latest")?.setProperties(PropertyFactory.rasterOpacity(if (index < 0) RADAR_OPACITY else 0f))
-        if (framesAdded) {
-            frames.indices.forEach { i ->
-                s.getLayer("radar-$i")?.setProperties(PropertyFactory.rasterOpacity(if (i == index) RADAR_OPACITY else 0f))
-            }
-        }
+    LaunchedEffect(index, frameOverlays) {
+        latest.isEnabled = index < 0
+        frameOverlays.forEachIndexed { i, overlay -> overlay.isEnabled = i == index }
+        mapView.invalidate()
     }
 
     Box(modifier.clip(RoundedCornerShape(20.dp))) {
@@ -219,5 +232,16 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
                 Box(Modifier.padding(vertical = 14.dp, horizontal = 4.dp))
             }
         }
+        Text(
+            "Map: USGS  ·  Radar: NOAA",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(6.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }

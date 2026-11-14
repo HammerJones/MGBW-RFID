@@ -392,7 +392,7 @@ impl SnowTrack {
         let _ = self.store.save_state(&state);
     }
 
-    /// MapLibre raster tile URL for the radar layer covering this location;
+    /// Raster tile URL (WMS; the app fills in `{bbox-epsg-3857}`) for the radar layer covering this location;
     /// `time` is one of `radar_times`, or `None` for the latest frame.
     pub fn radar_tile_template(&self, lat: f64, lon: f64, time: Option<String>) -> String {
         radar::tile_template(radar::region(lat, lon), time.as_deref())

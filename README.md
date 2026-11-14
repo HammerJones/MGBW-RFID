@@ -28,7 +28,7 @@ Resort coordinates and elevations in `core/resorts.csv` were entered by hand and
 ## How it's built
 
 - `core/` — Rust. All networking, parsing, snowfall maths, notification decisions and storage. Exposed to Android through [UniFFI](https://mozilla.github.io/uniffi-rs/).
-- `android/` — Kotlin + Jetpack Compose. Screens, charts and the MapLibre radar map only.
+- `android/` — Kotlin + Jetpack Compose. Screens, charts and the osmdroid radar map only.
 
 ```sh
 cargo test -p snowtrack-core            # run the core's tests

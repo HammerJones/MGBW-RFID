@@ -69,7 +69,7 @@ dependencies {
     // Rust bindings (UniFFI) talk to the native library through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     // Map for the radar page.
-    implementation("org.maplibre.gl:android-sdk:11.3.0")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     testImplementation("junit:junit:4.13.2")
 }
