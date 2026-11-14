@@ -37,7 +37,12 @@ fn url_encode(s: &str) -> String {
 }
 
 pub fn news_url(resort: &Resort) -> String {
-    let q = format!("\"{}\" {} snow when:7d", short_name(&resort.name), resort.state);
+    // The full state name finds far more than the two-letter code.
+    let state = match crate::catalog::state_name(&resort.state) {
+        "" => resort.state.as_str(),
+        full => full,
+    };
+    let q = format!("\"{}\" {} snow when:7d", short_name(&resort.name), state);
     format!("https://news.google.com/rss/search?q={}&hl=en-US&gl=US&ceid=US:en", url_encode(&q))
 }
 
@@ -131,14 +136,16 @@ fn build_item(title: &str, link: &str, date: &str, source: &str) -> Option<NewsI
     if title.is_empty() || !(link.starts_with("https://") || link.starts_with("http://")) {
         return None;
     }
-    // Google News titles end with " - Source Name".
-    if let Some((head, tail)) = title.rsplit_once(" - ") {
-        if source.is_empty() || tail.eq_ignore_ascii_case(&source) {
-            if source.is_empty() {
-                source = tail.to_string();
-            }
-            title = head.to_string();
+    // Google News titles end with " - Source Name", sometimes on top of the
+    // outlet's own " - Source Name" suffix.
+    while let Some((head, tail)) = title.rsplit_once(" - ") {
+        if head.is_empty() || !(source.is_empty() || tail.eq_ignore_ascii_case(&source)) {
+            break;
         }
+        if source.is_empty() {
+            source = tail.to_string();
+        }
+        title = head.to_string();
     }
     Some(NewsItem {
         reported_snow_cm: extract_snow_cm(&title),
@@ -208,6 +215,7 @@ pub mod tests {
 <item><title><![CDATA[Opening day at Vail & Beaver Creek: what to know - The Denver Post]]></title><link>https://news.google.com/rss/articles/def</link><pubDate>Fri, 13 Nov 2026 09:30:00 GMT</pubDate><source url="https://www.denverpost.com">The Denver Post</source></item>
 <item><title>Colorado ski areas brace for 1-2 feet of snow - 9News</title><link>https://news.google.com/rss/articles/ghi</link><pubDate>Sat, 14 Nov 2026 15:00:00 GMT</pubDate><source url="https://www.9news.com">9News</source></item>
 <item><title>Vail reports 14 inches overnight as storm lingers - Vail Daily</title><link>https://news.google.com/rss/articles/dup</link><pubDate>Sat, 14 Nov 2026 12:00:00 GMT</pubDate><source>Vail Daily</source></item>
+<item><title>Vail gets first snow of the season - KDVR - KDVR</title><link>https://news.google.com/rss/articles/twice</link><pubDate>Thu, 12 Nov 2026 09:30:00 GMT</pubDate><source>KDVR</source></item>
 <item><title>No link here</title></item>
 <item><title>Bad scheme</title><link>javascript:alert(1)</link></item>
 </channel></rss>"#;
@@ -241,7 +249,8 @@ pub mod tests {
     #[test]
     fn parses_rss_items() {
         let items = parse_rss(RSS);
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 5);
+        assert_eq!(items[4].title, "Vail gets first snow of the season");
         assert_eq!(items[0].title, "Vail reports 14 inches overnight as storm lingers");
         assert_eq!(items[0].source, "Vail Daily");
         assert_eq!(items[0].url, "https://news.google.com/rss/articles/abc?oc=5&x=1");
@@ -263,7 +272,7 @@ pub mod tests {
     fn selects_relevant_newest_first_without_duplicates() {
         let items = select_news(parse_rss(RSS), &vail());
         let titles: Vec<_> = items.iter().map(|i| i.title.as_str()).collect();
-        assert_eq!(titles, vec!["Vail reports 14 inches overnight as storm lingers", "Opening day at Vail & Beaver Creek: what to know"]);
+        assert_eq!(titles, vec!["Vail reports 14 inches overnight as storm lingers", "Opening day at Vail & Beaver Creek: what to know", "Vail gets first snow of the season"]);
     }
 
     #[test]
@@ -272,6 +281,6 @@ pub mod tests {
         assert_eq!(short_name("Copper Mountain"), "Copper Mountain");
         assert_eq!(short_name("Jackson Hole Mountain Resort"), "Jackson Hole");
         assert_eq!(short_name("Resort"), "Resort");
-        assert_eq!(news_url(&vail()), "https://news.google.com/rss/search?q=%22Vail%22+CO+snow+when%3A7d&hl=en-US&gl=US&ceid=US:en");
+        assert_eq!(news_url(&vail()), "https://news.google.com/rss/search?q=%22Vail%22+Colorado+snow+when%3A7d&hl=en-US&gl=US&ceid=US:en");
     }
 }

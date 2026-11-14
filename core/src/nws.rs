@@ -148,20 +148,24 @@ pub fn forecast_days<Z: TimeZone>(grid: &Grid, tz: &Z, today: NaiveDate, n_days:
         .collect()
 }
 
-/// Forecast snow in the `hours` after `from`. `None` if the grid has no
-/// snowfall data reaching into that window.
+/// A total is only reported when the grid covers at least this share of the
+/// window; many offices forecast snowfall only three or four days out.
+pub const MIN_WINDOW_COVERAGE: f64 = 0.7;
+
+/// Forecast snow in the `hours` after `from`. `None` when the grid's
+/// snowfall data does not cover enough of that window to give a fair total.
 pub fn window_snow_cm(grid: &Grid, from: DateTime<Utc>, hours: i64) -> Option<f64> {
     let to = from + Duration::hours(hours);
-    let mut any = false;
+    let mut covered_s = 0.0;
     let mut sum = 0.0;
     for s in &grid.snow_cm {
         let f = overlap_fraction(s.start, s.dur, from, to);
         if f > 0.0 {
-            any = true;
+            covered_s += f * s.dur.num_seconds() as f64;
             sum += s.value * f;
         }
     }
-    any.then_some(sum)
+    (covered_s >= MIN_WINDOW_COVERAGE * (hours * 3600) as f64).then_some(sum)
 }
 
 const WINTER_WORDS: [&str; 9] =
@@ -391,6 +395,8 @@ pub mod tests {
         // Next 24 h ends 19Z on the 15th: 0.6 + 1.2 + 3.0 = 4.8 cm.
         assert!((window_snow_cm(&g, now, 24).unwrap() - 4.8).abs() < 1e-9);
         assert!((window_snow_cm(&g, now, 72).unwrap() - 6.0).abs() < 1e-9);
+        // The fixture's snowfall data ends after about three days: a 7-day total would mislead.
+        assert_eq!(window_snow_cm(&g, now, 168), None);
         assert_eq!(window_snow_cm(&Grid::default(), now, 24), None);
     }
 

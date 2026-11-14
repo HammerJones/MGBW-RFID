@@ -21,7 +21,11 @@ tap() {
 finish() {
   adb logcat -d -v brief AndroidRuntime:E Mbgl:W "*:S" > "$OUT/logcat.txt" 2>&1
   adb logcat -d | grep -iE "FATAL|snowtrack|UnsatisfiedLink|maplibre|Mbgl" | tail -300 > "$OUT/logcat-app.txt" 2>&1
-  if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then echo "APP CRASHED" | tee -a "$OUT/problems.txt"; fi
+  adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+  if [ -s "$OUT/crash.txt" ] && grep -qE "FATAL|signal|backtrace" "$OUT/crash.txt"; then
+    echo "APP CRASHED" | tee -a "$OUT/problems.txt"
+    echo "----- crash log -----"; head -150 "$OUT/crash.txt"; echo "----- end crash log -----"
+  fi
   [ -f "$OUT/problems.txt" ] && cat "$OUT/problems.txt"
   exit 0
 }

@@ -85,12 +85,12 @@ fn refresh_builds_a_complete_snapshot() {
 
     assert!(close(s.next_24h_cm, 4.8));
     assert!(close(s.next_72h_cm, 6.0));
-    assert!(close(s.next_7d_cm, 6.0));
+    assert_eq!(s.next_7d_cm, None); // grid covers too little of the week
     assert!(close(s.days[8].snow_cm, 4.0));
 
     assert_eq!(s.station.as_ref().unwrap().name, "Vail Mountain");
     assert_eq!(s.alerts.len(), 2);
-    assert_eq!(s.news.len(), 2);
+    assert_eq!(s.news.len(), 3);
     assert!(s.outlook.unwrap().contains("Heavy mountain snow"));
     assert_eq!(s.radar_station.as_deref(), Some("KGJX"));
     assert_eq!(s.fetched_at_epoch_s, now().timestamp());
