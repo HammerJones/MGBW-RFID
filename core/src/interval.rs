@@ -8,7 +8,8 @@ pub fn parse_valid_time(s: &str) -> Option<(DateTime<Utc>, Duration)> {
     let (start, dur) = s.split_once('/')?;
     let start = DateTime::parse_from_rfc3339(start).ok()?.with_timezone(&Utc);
     let dur = parse_duration(dur)?;
-    if dur <= Duration::zero() {
+    // Forecast intervals are hours to days; anything huge is bad data.
+    if dur <= Duration::zero() || dur > Duration::days(31) {
         return None;
     }
     Some((start, dur))
@@ -32,7 +33,7 @@ fn parse_duration(s: &str) -> Option<Duration> {
                 num.push(c);
                 continue;
             }
-            let n: i64 = num.parse().ok()?;
+            let n: i64 = num.parse().ok().filter(|n| *n <= 100_000)?;
             num.clear();
             seen = true;
             total += match (c, in_time) {
@@ -124,7 +125,7 @@ mod tests {
 
     #[test]
     fn rejects_garbage() {
-        for bad in ["", "nope", "2026-11-14T06:00:00+00:00", "2026-11-14T06:00:00+00:00/", "2026-11-14T06:00:00+00:00/P", "2026-11-14T06:00:00+00:00/PT", "2026-11-14T06:00:00+00:00/PT6", "2026-11-14T06:00:00+00:00/P6H", "x/PT6H", "2026-11-14T06:00:00+00:00/PT0H"] {
+        for bad in ["", "nope", "2026-11-14T06:00:00+00:00", "2026-11-14T06:00:00+00:00/", "2026-11-14T06:00:00+00:00/P", "2026-11-14T06:00:00+00:00/PT", "2026-11-14T06:00:00+00:00/PT6", "2026-11-14T06:00:00+00:00/P6H", "x/PT6H", "2026-11-14T06:00:00+00:00/PT0H", "2026-11-14T06:00:00+00:00/P99999999D", "2026-11-14T06:00:00+00:00/P40D", "2026-11-14T06:00:00+00:00/PT99999999999999999999H"] {
             assert!(parse_valid_time(bad).is_none(), "{bad}");
         }
     }

@@ -202,6 +202,21 @@ fn offline_refresh_returns_saved_data_marked_stale() {
 }
 
 #[test]
+fn offline_add_with_only_a_cached_station_list_is_an_error_not_an_empty_card() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let (st, _) = app(dir.path(), full_http());
+        let id = add_vail(&st);
+        st.refresh(id).unwrap(); // leaves stations.json on disk
+    }
+    let (st, _) = app(dir.path(), FakeHttp::new());
+    let alta = catalog::search("alta", 1).remove(0);
+    st.add_resort(alta.clone()).unwrap();
+    assert!(matches!(st.refresh(alta.id.clone()), Err(SnowError::Network { .. })));
+    assert!(st.snapshot(alta.id).is_none());
+}
+
+#[test]
 fn offline_with_nothing_saved_is_an_error() {
     let dir = tempfile::tempdir().unwrap();
     let (st, _) = app(dir.path(), FakeHttp::new());

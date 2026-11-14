@@ -65,7 +65,10 @@ impl Store {
     /// Write via a temporary file so a crash never leaves a half-written file.
     fn write<T: Serialize>(&self, name: &str, value: &T) -> Result<(), String> {
         let path = self.dir.join(name);
-        let tmp = self.dir.join(format!("{name}.tmp"));
+        // Unique per write: the UI and the background check can save the same file at once.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = self.dir.join(format!("{name}.{}.{n}.tmp", std::process::id()));
         let text = serde_json::to_string(value).map_err(|e| e.to_string())?;
         fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &path)).map_err(|e| format!("Could not save {name}: {e}"))
     }

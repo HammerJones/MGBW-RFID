@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import com.hammerjones.snowtrack.ui.AddResortScreen
 import com.hammerjones.snowtrack.ui.HomeScreen
 import com.hammerjones.snowtrack.ui.ResortScreen
@@ -28,7 +29,8 @@ class MainActivity : ComponentActivity() {
                 when (val screen = vm.screen) {
                     Screen.Home -> HomeScreen(vm)
                     Screen.Add -> AddResortScreen(vm)
-                    is Screen.Detail -> ResortScreen(vm, screen.id)
+                    // Keyed so switching resorts (from a notification) rebuilds the map.
+                    is Screen.Detail -> key(screen.id) { ResortScreen(vm, screen.id) }
                 }
             }
         }

@@ -30,9 +30,10 @@ pub fn decide(state: &NotifyState, snap: &Snapshot, threshold_cm: f64, metric: b
         return (notices, next);
     }
     let name = crate::news::short_name(&snap.resort.name);
-    let notice = |title: String, body: String| SnowNotice {
+    let notice = |tag: String, title: String, body: String| SnowNotice {
         resort_id: snap.resort.id.clone(),
         resort_name: snap.resort.name.clone(),
+        tag,
         title,
         body,
     };
@@ -41,11 +42,12 @@ pub fn decide(state: &NotifyState, snap: &Snapshot, threshold_cm: f64, metric: b
         let big = cm >= threshold_cm;
         match (big, state.storm_cm) {
             (true, None) => {
-                notices.push(notice(format!("{} of snow coming to {name}", amount(cm, metric)), storm_body(snap, metric)));
+                notices.push(notice("storm".into(), format!("{} of snow coming to {name}", amount(cm, metric)), storm_body(snap, metric)));
                 next.storm_cm = Some(cm);
             }
             (true, Some(prev)) if cm >= prev + REPEAT_GROWTH_CM => {
                 notices.push(notice(
+                    "storm".into(),
                     format!("{name} forecast up to {}", amount(cm, metric)),
                     format!("Was {}. {}", amount(prev, metric), storm_body(snap, metric)),
                 ));
@@ -61,7 +63,7 @@ pub fn decide(state: &NotifyState, snap: &Snapshot, threshold_cm: f64, metric: b
         snap.alerts.iter().map(|a| format!("{}|{}", a.event, a.ends.clone().unwrap_or_default())).collect();
     for (alert, key) in snap.alerts.iter().zip(&current) {
         if !state.alerts.contains(key) {
-            notices.push(notice(format!("{} for {name}", alert.event), alert.headline.clone()));
+            notices.push(notice(format!("alert:{}", alert.event), format!("{} for {name}", alert.event), alert.headline.clone()));
         }
     }
     // Only forget alerts when we actually know the current list.
@@ -129,6 +131,7 @@ mod tests {
         assert_eq!(n[0].title, "10\" of snow coming to Vail");
         assert_eq!(n[0].body, "Next 72 hours. 2\" in the next 24. Biggest day: Sunday (8\").");
         assert_eq!(n[0].resort_id, "vail-co");
+        assert_eq!(n[0].tag, "storm");
         let (again, s2) = decide(&s, &snap(Some(27.0), vec![]), 15.24, false);
         assert!(again.is_empty());
         assert_eq!(s2.storm_cm, Some(25.4));
@@ -165,6 +168,7 @@ mod tests {
         assert_eq!(n.len(), 1);
         assert_eq!(n[0].title, "Winter Storm Warning for Vail");
         assert_eq!(n[0].body, "Heavy snow expected");
+        assert_eq!(n[0].tag, "alert:Winter Storm Warning");
         assert!(decide(&s, &snap(Some(0.0), vec![warning()]), 15.24, false).0.is_empty());
         // Once it expires it is forgotten.
         assert!(decide(&s, &snap(Some(0.0), vec![]), 15.24, false).1.alerts.is_empty());

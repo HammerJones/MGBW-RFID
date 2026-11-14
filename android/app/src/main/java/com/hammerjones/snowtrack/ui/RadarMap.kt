@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.GradientDrawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -145,7 +146,15 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
             mapView.overlays.add(
                 Marker(mapView).apply {
                     position = GeoPoint(lat, lon)
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    // A plain dot reads better over radar than the default pin.
+                    val px = (16 * context.resources.displayMetrics.density).toInt()
+                    icon = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.rgb(11, 20, 32))
+                        setStroke(px / 5, Color.WHITE)
+                        setSize(px, px)
+                    }
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     setInfoWindow(null)
                 }
             )

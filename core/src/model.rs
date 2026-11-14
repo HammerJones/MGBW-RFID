@@ -103,6 +103,8 @@ impl Default for Settings {
 pub struct SnowNotice {
     pub resort_id: String,
     pub resort_name: String,
+    /// Notices with the same resort and tag replace each other: `storm`, or `alert:<event>`.
+    pub tag: String,
     pub title: String,
     pub body: String,
 }

@@ -102,22 +102,42 @@ pub fn parse_depths_cm(body: &str) -> Result<BTreeMap<NaiveDate, f64>, String> {
     Ok(out)
 }
 
+/// A reading that jumps away from both neighbouring days by more than this,
+/// while those neighbours agree with each other, is a sensor glitch.
+const OUTLIER_CM: f64 = 30.0;
+
+fn without_outliers(depths: &BTreeMap<NaiveDate, f64>) -> BTreeMap<NaiveDate, f64> {
+    depths
+        .iter()
+        .filter(|(date, d)| {
+            let prev = depths.get(&(**date - Duration::days(1)));
+            let next = depths.get(&(**date + Duration::days(1)));
+            match (prev, next) {
+                (Some(p), Some(n)) => {
+                    let same_side = (**d - p) * (**d - n) > 0.0;
+                    !(same_side && (**d - p).abs() > OUTLIER_CM && (**d - n).abs() > OUTLIER_CM && (p - n).abs() <= OUTLIER_CM)
+                }
+                _ => true,
+            }
+        })
+        .map(|(k, v)| (*k, *v))
+        .collect()
+}
+
 pub fn history_from_depths(depths: &BTreeMap<NaiveDate, f64>, today: NaiveDate, days: u32) -> Vec<DaySnow> {
+    let depths = without_outliers(depths);
     (1..=days as i64)
         .rev()
         .map(|back| {
             let date = today - Duration::days(back);
             let depth = depths.get(&date).copied();
             let prev = depths.get(&(date - Duration::days(1))).copied();
-            let snow = match (depth, prev) {
-                (Some(d), Some(p)) if d - p > SPIKE_CM => None,
-                (Some(d), Some(p)) => Some((d - p).max(0.0)),
-                _ => None,
-            };
-            // A spike reading is not a trustworthy depth either.
-            let depth = match (depth, prev) {
-                (Some(d), Some(p)) if d - p > SPIKE_CM => None,
-                _ => depth,
+            // New snow needs two consecutive good readings; anything else is unknown.
+            let (snow, depth) = match (depth, prev) {
+                // The newest reading has no later neighbour to check it against.
+                (Some(d), Some(p)) if d - p > SPIKE_CM => (None, None),
+                (Some(d), Some(p)) => (Some((d - p).max(0.0)), Some(d)),
+                (d, _) => (None, d),
             };
             DaySnow {
                 date: date.to_string(),
@@ -209,16 +229,46 @@ pub mod tests {
     }
 
     #[test]
-    fn spike_is_dropped() {
+    fn one_day_spike_is_dropped_and_not_counted_as_snow() {
         let mut m = BTreeMap::new();
         for (date, cm) in [("2026-11-11", 50.0), ("2026-11-12", 200.0), ("2026-11-13", 52.0)] {
             m.insert(d(date), cm);
         }
         let h = history_from_depths(&m, d("2026-11-14"), 2);
-        assert_eq!(h[0].snow_cm, None);
-        assert_eq!(h[0].depth_cm, None);
-        // The day after a spike compares against the bad reading: settle, not snow.
-        assert_eq!(h[1].snow_cm, Some(0.0));
-        assert_eq!(h[1].depth_cm, Some(52.0));
+        assert_eq!((h[0].snow_cm, h[0].depth_cm), (None, None));
+        // The day after has no trustworthy reading before it: unknown, not zero.
+        assert_eq!((h[1].snow_cm, h[1].depth_cm), (None, Some(52.0)));
+    }
+
+    #[test]
+    fn one_day_dip_does_not_become_phantom_snow() {
+        let mut m = BTreeMap::new();
+        for (date, cm) in [("2026-11-10", 100.0), ("2026-11-11", 100.0), ("2026-11-12", 40.0), ("2026-11-13", 100.0)] {
+            m.insert(d(date), cm);
+        }
+        let h = history_from_depths(&m, d("2026-11-14"), 3);
+        let snow: Vec<_> = h.iter().map(|x| x.snow_cm).collect();
+        assert_eq!(snow, vec![Some(0.0), None, None]);
+        assert_eq!(crate::history_totals(&h), (None, Some(0.0), Some(0.0), Some(100.0)));
+    }
+
+    #[test]
+    fn a_real_storm_is_not_mistaken_for_a_glitch() {
+        let mut m = BTreeMap::new();
+        for (date, cm) in [("2026-11-10", 50.0), ("2026-11-11", 95.0), ("2026-11-12", 130.0), ("2026-11-13", 120.0)] {
+            m.insert(d(date), cm);
+        }
+        let h = history_from_depths(&m, d("2026-11-14"), 3);
+        let snow: Vec<_> = h.iter().map(|x| x.snow_cm).collect();
+        assert_eq!(snow, vec![Some(45.0), Some(35.0), Some(0.0)]);
+    }
+
+    #[test]
+    fn newest_reading_spike_is_dropped() {
+        let mut m = BTreeMap::new();
+        m.insert(d("2026-11-12"), 50.0);
+        m.insert(d("2026-11-13"), 200.0);
+        let h = history_from_depths(&m, d("2026-11-14"), 1);
+        assert_eq!((h[0].snow_cm, h[0].depth_cm), (None, None));
     }
 }

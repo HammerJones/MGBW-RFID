@@ -53,7 +53,7 @@ object Notifier {
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pending = PendingIntent.getActivity(
             context,
-            notice.resortId.hashCode(),
+            (notice.resortId + "|" + notice.tag).hashCode(),
             open,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -66,8 +66,9 @@ object Notifier {
             .setAutoCancel(true)
             .build()
         try {
-            // One slot per resort and kind of news, so a later update replaces the earlier one.
-            NotificationManagerCompat.from(context).notify((notice.resortId + notice.title.take(12)).hashCode(), notification)
+            // One slot per resort and kind of news, so a storm update replaces the earlier
+            // one while a watch and a warning stay separate.
+            NotificationManagerCompat.from(context).notify(notice.resortId + "|" + notice.tag, 1, notification)
         } catch (e: SecurityException) {
             // Permission was revoked between the check and the post.
         }
@@ -94,6 +95,9 @@ object Notifier {
 
 class SnowWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
+        // The core marks a storm as announced once it reports it, so only ask
+        // when the notification can actually be shown.
+        if (!Notifier.canPost(applicationContext)) return Result.success()
         val notices = try {
             Core.get(applicationContext).checkNotifications()
         } catch (e: Exception) {

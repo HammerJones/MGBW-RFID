@@ -106,7 +106,7 @@ impl SnowTrack {
             true => tracked.station.clone(),
             false => match self.stations(now) {
                 Ok(list) => {
-                    successes += 1;
+                    // Not counted as reaching the network: the list may come from disk.
                     let found = snotel::nearest_station(&list, resort.lat, resort.lon);
                     let save = found.clone();
                     self.update_tracked(id, |t| {

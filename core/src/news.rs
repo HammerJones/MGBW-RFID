@@ -166,13 +166,32 @@ fn amount_re() -> &'static Regex {
     })
 }
 
+const SNOW_WORDS: [&str; 9] = ["snow", "powder", "storm", "overnight", "fresh", "dump", "blizzard", "flake", "accumulat"];
+/// What follows the unit when the number is not new snow.
+const NOT_SNOWFALL: [&str; 7] = ["base", "crown", "deep", "cliff", "drop", "slide", "tall"];
+
 /// The largest snowfall amount a headline mentions, in cm. For a range
-/// ("8-12 inches") the upper bound is used.
+/// ("8-12 inches") the upper bound is used. Headlines that are not about
+/// snow, and numbers that are elevations, base depths or part of a longer
+/// number, are ignored.
 pub fn extract_snow_cm(title: &str) -> Option<f64> {
+    let lower = title.to_lowercase();
+    if !SNOW_WORDS.iter().any(|w| lower.contains(w)) {
+        return None;
+    }
     let mut best: Option<f64> = None;
     for cap in amount_re().captures_iter(title) {
-        let n: f64 = cap.get(2)?.as_str().parse().ok()?;
-        let unit = cap.get(3)?.as_str().to_lowercase();
+        let (Some(whole), Some(num), Some(unit)) = (cap.get(0), cap.get(2), cap.get(3)) else { continue };
+        // "10,008 feet" and "1.5" must not be read as "008 feet" or "5".
+        if title[..whole.start()].chars().next_back().is_some_and(|c| c.is_ascii_digit() || c == ',' || c == '.') {
+            continue;
+        }
+        let after = title[whole.end()..].trim_start_matches([' ', '-']).to_lowercase();
+        if NOT_SNOWFALL.iter().any(|w| after.starts_with(w)) {
+            continue;
+        }
+        let Ok(n) = num.as_str().parse::<f64>() else { continue };
+        let unit = unit.as_str().to_lowercase();
         let cm = match unit.as_str() {
             "feet" | "foot" | "ft" => n * 30.48,
             "centimeters" | "centimetres" | "cm" => n,
@@ -183,7 +202,7 @@ pub fn extract_snow_cm(title: &str) -> Option<f64> {
             "feet" | "foot" | "ft" => n <= 12.0,
             _ => cm <= 400.0,
         };
-        if plausible && cm > 0.0 && best.map_or(true, |b| cm > b) {
+        if plausible && cm > 0.0 && best.is_none_or(|b| cm > b) {
             best = Some(cm);
         }
     }
@@ -228,18 +247,24 @@ pub mod tests {
     fn extracts_amounts() {
         let close = |a: Option<f64>, b: f64| a.map_or(false, |a| (a - b).abs() < 1e-6);
         assert!(close(extract_snow_cm("Vail reports 14 inches overnight"), 35.56));
-        assert!(close(extract_snow_cm("8-12 inches expected"), 30.48));
-        assert!(close(extract_snow_cm("8 to 12 inches expected"), 30.48));
+        assert!(close(extract_snow_cm("8-12 inches of snow expected"), 30.48));
+        assert!(close(extract_snow_cm("Storm: 8 to 12 inches expected"), 30.48));
         assert!(close(extract_snow_cm("2 feet of snow"), 60.96));
-        assert!(close(extract_snow_cm("30 cm falls at Alta"), 30.0));
+        assert!(close(extract_snow_cm("30 cm of snow falls at Alta"), 30.0));
         assert!(close(extract_snow_cm("Storm drops 10+ inches"), 25.4));
         assert!(close(extract_snow_cm("A 20-inch dump, then 3 inches more"), 50.8));
-        assert!(close(extract_snow_cm("Up to 18\" by Monday"), 45.72));
+        assert!(close(extract_snow_cm("Snow totals up to 18\" by Monday"), 45.72));
     }
 
     #[test]
     fn ignores_non_amounts() {
         assert_eq!(extract_snow_cm("Lift 14 opens"), None);
+        assert_eq!(extract_snow_cm("6-foot crown avalanche near Vail"), None);
+        assert_eq!(extract_snow_cm("Snowy Vail sits at 10,008 feet"), None);
+        assert_eq!(extract_snow_cm("Vail hits 100\" base after storm"), None);
+        assert_eq!(extract_snow_cm("Skier survives 3-foot-deep snow slide"), None);
+        assert_eq!(extract_snow_cm("New 6 inch sub rolls on sale at Vail"), None);
+        assert_eq!(extract_snow_cm("Snow forecast: 1.5 inches"), Some(1.5 * 2.54));
         assert_eq!(extract_snow_cm("Snow above 9,000 feet"), None);
         assert_eq!(extract_snow_cm("Resort at 11000 ft sees flakes"), None);
         assert_eq!(extract_snow_cm("Opening day is Nov. 20 in Vail"), None);

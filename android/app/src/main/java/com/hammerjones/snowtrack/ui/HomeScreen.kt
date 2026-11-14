@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,7 +87,7 @@ fun MessageHost(vm: SnowViewModel, host: SnackbarHostState) {
 @Composable
 fun rememberBellToggle(vm: SnowViewModel): (String, Boolean) -> Unit {
     val context = LocalContext.current
-    var pending by remember { mutableStateOf<String?>(null) }
+    var pending by rememberSaveable { mutableStateOf<String?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val id = pending
         pending = null
