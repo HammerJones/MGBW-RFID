@@ -125,8 +125,8 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
             isHorizontalMapRepetitionEnabled = false
             isVerticalMapRepetitionEnabled = false
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-            minZoomDouble = 3.0
-            maxZoomDouble = 11.0
+            setMinZoomLevel(3.0)
+            setMaxZoomLevel(11.0)
             controller.setZoom(6.5)
             controller.setCenter(GeoPoint(lat, lon))
             // Let the map pan and zoom even though it sits inside a scrolling page.
