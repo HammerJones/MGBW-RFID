@@ -20,7 +20,11 @@ fi
 echo "== Kotlin bindings"
 # The bindings are read from a host build of the same source.
 cargo build -p snowtrack-core --lib
-HOST_LIB=$(ls target/debug/libsnowtrack_core.so target/debug/libsnowtrack_core.dylib 2>/dev/null | head -1)
+HOST_LIB=""
+for candidate in target/debug/libsnowtrack_core.so target/debug/libsnowtrack_core.dylib; do
+  if [ -f "$candidate" ]; then HOST_LIB="$candidate"; break; fi
+done
+if [ -z "$HOST_LIB" ]; then echo "Host build of the core library not found in target/debug" >&2; exit 1; fi
 rm -rf "$KOTLIN/uniffi"
 cargo run -q -p snowtrack-core --features cli --bin uniffi-bindgen -- \
   generate --library "$HOST_LIB" --language kotlin --no-format --out-dir "$KOTLIN"
