@@ -80,3 +80,15 @@ station (<name>, <distance>)" in the UI.
   bindings, builds a signed APK and uploads it as an artifact — same pattern
   as the budget app's workflow, including the cached signing key.
 - Units: inches and °F by default, with a metric toggle.
+
+## Added 2026-11-14: snow notifications
+
+Sean asked for a bell on each card. With the bell on, the app checks that
+resort in the background every 3 hours (WorkManager, needs a connection) and
+posts a notification when the 72-hour forecast reaches the threshold in
+Settings (default 6 in), or when NWS issues a new winter alert. One
+notification per storm: it repeats only if the forecast grows by 10 cm or
+more, and re-arms once the forecast falls below half the threshold. The
+decision logic lives in Rust (`core/src/notify.rs`); Kotlin only posts.
+"Notifications" is therefore no longer a non-goal. The app now lives in
+`HammerJones/MGBW-RFID` (old contents removed) rather than `rfid`.

@@ -303,8 +303,12 @@ fn history_totals_handle_gaps() {
 fn radar_helpers() {
     let dir = tempfile::tempdir().unwrap();
     let (st, _) = app(dir.path(), FakeHttp::new());
-    assert!(st.radar_tile_template(None).contains("{bbox-epsg-3857}"));
-    assert!(st.radar_times().is_empty());
+    assert!(st.radar_tile_template(39.6, -106.4, None).contains("{bbox-epsg-3857}"));
+    assert!(st.radar_times(39.6, -106.4).is_empty());
+    let caps = "<Dimension name=\"time\" default=\"x\">2026-11-11T07:46:13.000Z,2026-11-11T09:43:58.000Z</Dimension>";
+    let (st, http) = app(dir.path(), FakeHttp::new().ok("/alaska/alaska_bref_qcd/ows?service=WMS&version=1.3.0&request=GetCapabilities", caps));
+    assert_eq!(st.radar_times(60.97, -149.1).len(), 2);
+    assert_eq!(http.count("alaska"), 1);
     assert_eq!(days_between("2026-11-14", "2026-11-16"), Some(2));
     assert_eq!(days_between("bad", "2026-11-16"), None);
 }

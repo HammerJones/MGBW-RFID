@@ -2,14 +2,30 @@
 
 use crate::http::Http;
 
-const WMS: &str = "https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows";
+const GEOSERVER: &str = "https://opengeo.ncep.noaa.gov/geoserver";
 pub const MAX_FRAMES: usize = 8;
+
+/// NOAA publishes a separate mosaic for each region.
+pub fn region(lat: f64, lon: f64) -> &'static str {
+    if lat > 50.0 {
+        "alaska"
+    } else if lat < 23.0 && lon < -150.0 {
+        "hawaii"
+    } else {
+        "conus"
+    }
+}
+
+fn wms(region: &str) -> String {
+    format!("{GEOSERVER}/{region}/{region}_bref_qcd/ows")
+}
 
 /// A MapLibre raster-tile URL template. `time` is one of `radar_times`,
 /// or `None` for the latest frame.
-pub fn tile_template(time: Option<&str>) -> String {
+pub fn tile_template(region: &str, time: Option<&str>) -> String {
     let mut url = format!(
-        "{WMS}?service=WMS&version=1.1.1&request=GetMap&layers=conus_bref_qcd&styles=&format=image/png&transparent=true&srs=EPSG:3857&width=256&height=256&bbox={{bbox-epsg-3857}}"
+        "{}?service=WMS&version=1.1.1&request=GetMap&layers={region}_bref_qcd&styles=&format=image/png&transparent=true&srs=EPSG:3857&width=256&height=256&bbox={{bbox-epsg-3857}}",
+        wms(region)
     );
     if let Some(t) = time.filter(|t| is_time(t)) {
         url.push_str("&time=");
@@ -23,9 +39,9 @@ fn is_time(s: &str) -> bool {
 }
 
 /// Recent frame times (oldest first), thinned to at most `MAX_FRAMES`.
-pub fn fetch_times(http: &dyn Http) -> Result<Vec<String>, String> {
+pub fn fetch_times(http: &dyn Http, region: &str) -> Result<Vec<String>, String> {
     let body = http
-        .get(&format!("{WMS}?service=WMS&version=1.3.0&request=GetCapabilities"))
+        .get(&format!("{}?service=WMS&version=1.3.0&request=GetCapabilities", wms(region)))
         .map_err(|e| format!("Radar times failed: {e}"))?;
     Ok(thin(parse_times(&body), MAX_FRAMES))
 }
@@ -74,11 +90,16 @@ mod tests {
 
     #[test]
     fn template_has_bbox_placeholder_and_optional_time() {
-        let t = tile_template(None);
+        let t = tile_template("conus", None);
+        assert!(t.starts_with("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?"));
+        assert!(t.contains("layers=conus_bref_qcd&"));
+        assert!(tile_template(region(60.97, -149.1), None).contains("/alaska/alaska_bref_qcd/ows?"));
+        assert_eq!(region(39.6, -106.4), "conus");
+        assert_eq!(region(19.8, -155.5), "hawaii");
         assert!(t.ends_with("bbox={bbox-epsg-3857}"));
         assert!(t.contains("srs=EPSG:3857"));
-        assert!(tile_template(Some("2026-11-11T09:43:58.000Z")).ends_with("&time=2026-11-11T09:43:58.000Z"));
+        assert!(tile_template("conus", Some("2026-11-11T09:43:58.000Z")).ends_with("&time=2026-11-11T09:43:58.000Z"));
         // Anything that is not a timestamp is ignored rather than injected into the URL.
-        assert_eq!(tile_template(Some("x&layers=evil")), t);
+        assert_eq!(tile_template("conus", Some("x&layers=evil")), t);
     }
 }

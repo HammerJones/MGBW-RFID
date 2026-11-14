@@ -1,0 +1,82 @@
+# Tests the Rust core and builds the Android APK on GitHub's free runners.
+# Open the Actions tab, pick the latest run, and download "snowtrack-android".
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test the Rust core
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo test -p snowtrack-core 2>&1 | tee test.log; then
+            msg=$(grep -E "panicked|FAILED|^error|assertion" test.log | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Rust tests failed::${msg}"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Install Android platform and build tools
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+      - run: cargo install cargo-ndk --locked
+
+      # Keep the same signing key between builds so new versions install over old ones.
+      - name: Restore signing key
+        id: key
+        uses: actions/cache@v4
+        with:
+          path: android/snowtrack.keystore
+          key: snowtrack-signing-key-v1
+      - name: Make a signing key (first build only)
+        if: steps.key.outputs.cache-hit != 'true'
+        run: |
+          echo "::warning title=New signing key::This APK is signed with a NEW key, so it won't install over a previous version. Uninstall SnowTrack first, then install this one."
+          keytool -genkeypair -keystore android/snowtrack.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=SnowTrack"
+
+      - name: Build the Rust library and Kotlin bindings
+        shell: bash
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          set -o pipefail
+          if ! ./scripts/build-android.sh 2>&1 | tee rust.log; then
+            msg=$(grep -v "^ *Compiling\|^ *Downloaded\|^ *Downloading" rust.log | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Rust Android build failed::${msg}"
+            exit 1
+          fi
+
+      - name: Build APK
+        shell: bash
+        working-directory: android
+        env:
+          SNOWTRACK_KEYSTORE: ${{ github.workspace }}/android/snowtrack.keystore
+        run: |
+          set -o pipefail
+          if ! gradle testReleaseUnitTest assembleRelease --no-daemon --console=plain -PversionCode=${{ github.run_number }} 2>&1 | tee gradle.log; then
+            msg=$(grep -E "^e: |error:|ERROR|What went wrong|FAILED|Exception|^> |Could not|Unresolved" gradle.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Gradle build failed::${msg}"
+            exit 1
+          fi
+          mkdir -p ../apk && cp app/build/outputs/apk/release/*.apk ../apk/SnowTrack.apk
+          ls -la ../apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snowtrack-android
+          path: apk/SnowTrack.apk

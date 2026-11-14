@@ -392,14 +392,16 @@ impl SnowTrack {
         let _ = self.store.save_state(&state);
     }
 
-    /// MapLibre raster tile URL for the radar layer; `time` from `radar_times`.
-    pub fn radar_tile_template(&self, time: Option<String>) -> String {
-        radar::tile_template(time.as_deref())
+    /// MapLibre raster tile URL for the radar layer covering this location;
+    /// `time` is one of `radar_times`, or `None` for the latest frame.
+    pub fn radar_tile_template(&self, lat: f64, lon: f64, time: Option<String>) -> String {
+        radar::tile_template(radar::region(lat, lon), time.as_deref())
     }
 
-    /// Recent radar frame times, oldest first. Empty if unavailable.
-    pub fn radar_times(&self) -> Vec<String> {
-        radar::fetch_times(self.http.as_ref()).unwrap_or_default()
+    /// Recent radar frame times for this location, oldest first. Empty if
+    /// unavailable. Blocks on the network.
+    pub fn radar_times(&self, lat: f64, lon: f64) -> Vec<String> {
+        radar::fetch_times(self.http.as_ref(), radar::region(lat, lon)).unwrap_or_default()
     }
 }
 
