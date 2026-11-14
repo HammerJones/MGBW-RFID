@@ -16,7 +16,8 @@ android {
         targetSdk = 34
         versionCode = buildNumber
         versionName = "0.1.$buildNumber"
-        ndk { abiFilters += "arm64-v8a" }
+        // -Pabi=x86_64 builds for the emulator (used by the CI screenshot run).
+        ndk { abiFilters += (project.findProperty("abi") as String?) ?: "arm64-v8a" }
     }
 
     signingConfigs {

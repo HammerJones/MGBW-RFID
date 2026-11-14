@@ -26,6 +26,17 @@ jobs:
             exit 1
           fi
 
+      # Runs the core against the real NOAA, SNOTEL and news services. An outage
+      # there should not fail the build, so this step only reports.
+      - name: Live data check (Vail, Alta, Killington)
+        continue-on-error: true
+        run: |
+          for r in vail alta killington; do
+            echo "::group::$r"
+            cargo run -q -p snowtrack-core --bin snowtrack -- "$r" || echo "::warning title=Live data check::$r failed"
+            echo "::endgroup::"
+          done
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -80,3 +91,53 @@ jobs:
         with:
           name: snowtrack-android
           path: apk/SnowTrack.apk
+
+  # Installs the app on an emulator, adds a resort and saves screenshots.
+  # Never blocks the APK: it is a look at the running app, not a gate.
+  screenshots:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: emulator
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Install Android platform and build tools
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+      - run: cargo install cargo-ndk --locked
+      - name: Build an emulator APK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_LATEST_HOME"
+          keytool -genkeypair -keystore android/snowtrack.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=SnowTrack"
+          ABI=x86_64 ./scripts/build-android.sh
+          cd android && SNOWTRACK_KEYSTORE=$PWD/snowtrack.keystore gradle assembleRelease --no-daemon --console=plain -Pabi=x86_64
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash scripts/ui-smoke.sh android/app/build/outputs/apk/release/app-release.apk shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snowtrack-screenshots
+          path: shots

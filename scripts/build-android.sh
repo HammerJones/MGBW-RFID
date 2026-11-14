@@ -5,16 +5,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# ABI=x86_64 builds for the emulator instead of a phone.
+ABI="${ABI:-arm64-v8a}"
 JNI=android/app/src/main/jniLibs
 KOTLIN=android/app/src/main/java
 
-echo "== Rust library for arm64 Android"
-cargo ndk -t arm64-v8a -P 26 -o "$JNI" build --release -p snowtrack-core --lib
-SO="$JNI/arm64-v8a/libsnowtrack_core.so"
+echo "== Rust library for Android ($ABI)"
+cargo ndk -t "$ABI" -P 26 -o "$JNI" build --release -p snowtrack-core --lib
+SO="$JNI/$ABI/libsnowtrack_core.so"
 ls -la "$SO"
 # Ship the C++ runtime too if the library needs it.
 if readelf -d "$SO" | grep -q "libc++_shared"; then
-  cp "$(find "${ANDROID_NDK_HOME:?}" -path "*aarch64-linux-android/libc++_shared.so" | head -1)" "$JNI/arm64-v8a/"
+  TRIPLE=$([ "$ABI" = "x86_64" ] && echo x86_64-linux-android || echo aarch64-linux-android)
+  cp "$(find "${ANDROID_NDK_HOME:?}" -path "*$TRIPLE/libc++_shared.so" | head -1)" "$JNI/$ABI/"
 fi
 
 echo "== Kotlin bindings"

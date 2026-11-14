@@ -15,9 +15,10 @@ fn print(s: &Snapshot) {
     }
     println!("Yesterday {}   Last 7 days {}   Depth {}", inches(s.last_24h_cm), inches(s.last_7d_cm), inches(s.depth_cm));
     println!("Next 24 h {}   Next 72 h {}   Next 7 days {}", inches(s.next_24h_cm), inches(s.next_72h_cm), inches(s.next_7d_cm));
-    println!("\n{:<12}{:>8}{:>8}  {}", "Date", "Snow", "Depth", "");
+    println!("\n{:<12}{:>8}{:>8}{:>12}", "Date", "Snow", "Depth", "Hi/Lo C");
     for d in &s.days {
-        println!("{:<12}{:>8}{:>8}  {}", d.date, inches(d.snow_cm), inches(d.depth_cm), if d.is_forecast { "forecast" } else { "" });
+        let t = |v: Option<f64>| v.map_or("—".to_string(), |x| format!("{x:.0}"));
+        println!("{:<12}{:>8}{:>8}{:>12}  {}", d.date, inches(d.snow_cm), inches(d.depth_cm), format!("{}/{}", t(d.temp_hi_c), t(d.temp_lo_c)), if d.is_forecast { "forecast" } else { "" });
     }
     for a in &s.alerts {
         println!("\n! {}", a.headline);
@@ -43,8 +44,17 @@ fn main() {
     let dir = std::env::temp_dir().join("snowtrack-cli");
     let app = SnowTrack::new(dir.to_string_lossy().to_string());
     let _ = app.add_resort(resort.clone());
+    let frames = app.radar_times(resort.lat, resort.lon);
     match app.refresh(resort.id) {
-        Ok(s) => print(&s),
+        Ok(s) => {
+            print(&s);
+            println!("\nRadar frames available: {} ({} … {})", frames.len(), frames.first().map_or("-", |f| f.as_str()), frames.last().map_or("-", |f| f.as_str()));
+            println!("Radar tiles: {}", app.radar_tile_template(resort.lat, resort.lon, frames.last().cloned()));
+            if let Some(o) = &s.outlook {
+                println!("\nOutlook ({} chars): {}…", o.chars().count(), o.chars().take(200).collect::<String>().replace('\n', " | "));
+            }
+            println!("\nDays: {}  alerts: {}  news: {}  problems: {}", s.days.len(), s.alerts.len(), s.news.len(), s.problems.len());
+        }
         Err(e) => {
             eprintln!("{e}");
             std::process::exit(1);
