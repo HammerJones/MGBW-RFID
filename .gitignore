@@ -1,1 +1,11 @@
 /target
+.superpowers/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/jniLibs/
+android/app/src/main/java/uniffi/
+android/local.properties
+android/*.keystore
+*.log
+/apk
