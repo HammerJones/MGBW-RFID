@@ -152,6 +152,9 @@ fun HomeScreen(vm: SnowViewModel) {
             } else {
                 Spacer(Modifier.height(4.dp))
             }
+            vm.update?.let { info ->
+                UpdateBanner(info.version, vm.downloadingUpdate, onUpdate = { vm.installUpdate() })
+            }
             when {
                 !vm.loaded -> Unit
                 vm.cards.isEmpty() -> EmptyState(onAdd = { vm.go(Screen.Add) })
@@ -174,10 +177,40 @@ fun HomeScreen(vm: SnowViewModel) {
     }
 
     if (showSettings) {
-        SettingsDialog(vm.settings, onDismiss = { showSettings = false }, onSave = {
-            vm.updateSettings(it)
-            showSettings = false
-        })
+        SettingsDialog(
+            current = vm.settings,
+            versionName = vm.versionName,
+            checking = vm.checkingUpdate,
+            onCheckUpdate = { vm.checkForUpdate(manual = true) },
+            onDismiss = { showSettings = false },
+            onSave = {
+                vm.updateSettings(it)
+                showSettings = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun UpdateBanner(version: String, downloading: Boolean, onUpdate: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Update available", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(
+                    if (downloading) "Downloading $version…" else version,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            TextButton(onClick = onUpdate, enabled = !downloading) { Text("Update") }
+        }
     }
 }
 
@@ -272,7 +305,7 @@ fun ResortCard(card: Card, metric: Boolean, refreshing: Boolean, onOpen: () -> U
                         Stat("on ground", Format.depth(snap.depthCm, metric), Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(12.dp))
-                    SnowChart(snap.days, metric, barAreaHeight = 56.dp, showValues = false)
+                    SnowChart(snap.days, metric, barAreaHeight = 56.dp, showValues = false, columnWidth = 36.dp)
                     snap.alerts.firstOrNull()?.let { alert ->
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +338,14 @@ fun ResortCard(card: Card, metric: Boolean, refreshing: Boolean, onOpen: () -> U
 }
 
 @Composable
-private fun SettingsDialog(current: Settings, onDismiss: () -> Unit, onSave: (Settings) -> Unit) {
+private fun SettingsDialog(
+    current: Settings,
+    versionName: String,
+    checking: Boolean,
+    onCheckUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+    onSave: (Settings) -> Unit,
+) {
     var metric by remember { mutableStateOf(current.metric) }
     // The slider works in whole inches (2–24) or 5 cm steps (5–60).
     var inches by remember { mutableFloatStateOf((current.notifyThresholdCm / 2.54).toFloat().coerceIn(2f, 24f)) }
@@ -329,6 +369,11 @@ private fun SettingsDialog(current: Settings, onDismiss: () -> Unit, onSave: (Se
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Slider(value = inches, onValueChange = { inches = it }, valueRange = 2f..24f, steps = 21)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Version $versionName", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = onCheckUpdate, enabled = !checking) { Text(if (checking) "Checking…" else "Check for updates") }
+                }
             }
         },
         confirmButton = {

@@ -13,6 +13,7 @@ import uniffi.snowtrack_core.Card
 import uniffi.snowtrack_core.Resort
 import uniffi.snowtrack_core.Settings
 import uniffi.snowtrack_core.SnowTrack
+import uniffi.snowtrack_core.UpdateInfo
 
 sealed class Screen {
     data object Home : Screen()
@@ -34,6 +35,15 @@ class SnowViewModel(app: Application) : AndroidViewModel(app) {
     /** Ids currently being refreshed. */
     var refreshing by mutableStateOf<Set<String>>(emptySet())
         private set
+    /** A newer build that can be installed, if one was found. */
+    var update by mutableStateOf<UpdateInfo?>(null)
+        private set
+    var checkingUpdate by mutableStateOf(false)
+        private set
+    var downloadingUpdate by mutableStateOf(false)
+        private set
+    val versionName: String = Updater.versionName(app)
+
     /** One-off message for the snackbar. */
     var message by mutableStateOf<String?>(null)
 
@@ -43,6 +53,59 @@ class SnowViewModel(app: Application) : AndroidViewModel(app) {
             reload()
             loaded = true
             refreshOutdated()
+            if (Updater.dueForCheck(getApplication())) checkForUpdate(manual = false)
+        }
+    }
+
+    fun checkForUpdate(manual: Boolean) {
+        if (checkingUpdate) return
+        checkingUpdate = true
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(core.checkUpdate(Updater.currentBuild(app).toUInt()))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+            checkingUpdate = false
+            result.onSuccess { found ->
+                Updater.markChecked(app)
+                update = found
+                if (manual && found == null) message = "You're on the latest version ($versionName)"
+            }.onFailure { e ->
+                if (manual) message = e.message ?: "Couldn't check for updates"
+            }
+        }
+    }
+
+    /** Download the update (once) and hand it to Android's installer. */
+    fun installUpdate() {
+        val info = update ?: return
+        if (downloadingUpdate) return
+        val app = getApplication<Application>()
+        if (!Updater.canInstall(app)) {
+            message = "Allow SnowTrack to install updates, then come back and tap Update again"
+            Updater.openInstallPermission(app)
+            return
+        }
+        downloadingUpdate = true
+        viewModelScope.launch {
+            val file = Updater.apkFile(app, info.build.toInt())
+            val error = withContext(Dispatchers.IO) {
+                try {
+                    if (!file.exists()) core.downloadUpdate(info.apkUrl, file.absolutePath)
+                    null
+                } catch (e: Exception) {
+                    e.message ?: "Update download failed"
+                }
+            }
+            downloadingUpdate = false
+            when {
+                error != null -> message = error
+                !Updater.install(app, file) -> message = "Couldn't open the installer"
+            }
         }
     }
 

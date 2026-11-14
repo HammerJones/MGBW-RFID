@@ -63,11 +63,26 @@ shot 07-bell-on
 
 tap "Vail" && sleep 25
 shot 08-resort-radar
-tap "Play loop" && sleep 20
+tap "Play" && sleep 20
 shot 09-radar-playing
 tap "Stop"
+# Drag the scrub bar to an older frame.
+if xy=$(python3 "$HERE/uitap.py" "Radar time"); then
+  set -- $xy
+  adb shell input swipe "$1" "$2" 330 "$2" 600 && sleep 8
+else
+  echo "TAP FAILED: Radar time" | tee -a "$OUT/problems.txt"
+fi
+shot 09b-radar-scrubbed
 adb shell input swipe 540 1900 540 700 400 && sleep 2
 shot 10-resort-totals-chart
+# Scroll the chart sideways to the long-range days.
+if xy=$(python3 "$HERE/uitap.py" "Snow by day, scrolls sideways" 0 --contains); then
+  set -- $xy
+  adb shell input swipe 900 "$2" 150 "$2" 400 && sleep 2
+  adb shell input swipe 900 "$2" 150 "$2" 400 && sleep 2
+fi
+shot 10b-chart-scrolled
 adb shell input swipe 540 1900 540 500 400 && sleep 2
 shot 11-resort-table
 adb shell input swipe 540 1900 540 500 400 && sleep 2
@@ -78,5 +93,13 @@ shot 13-resort-bottom
 adb shell input keyevent 4 && sleep 2
 tap "Settings" && sleep 2
 shot 14-settings
+tap "Cancel" && sleep 1
+# The emulator build is version 1, so the published release should be offered.
+tap "Update" && sleep 6
+shot 15-update-permission
+adb shell appops set com.hammerjones.snowtrack REQUEST_INSTALL_PACKAGES allow
+adb shell am start -n "$PKG/.MainActivity" && sleep 3
+tap "Update" && sleep 45
+shot 16-update-installer
 adb shell cmd notification list 2>/dev/null | head -20 > "$OUT/notifications.txt" || true
 adb shell dumpsys notification --noredact 2>/dev/null | grep -A3 "pkg=$PKG" | head -60 >> "$OUT/notifications.txt" || true

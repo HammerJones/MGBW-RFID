@@ -36,6 +36,7 @@ fn full_http() -> FakeHttp {
         .ok("/stations?", stations_json())
         .ok("/data?", history_body())
         .ok("news.google.com", RSS)
+        .ok("open-meteo.com", crate::longrange::tests::gfs_json())
 }
 
 fn app(dir: &std::path::Path, http: FakeHttp) -> (SnowTrack, Arc<FakeHttp>) {
@@ -62,12 +63,19 @@ fn refresh_builds_a_complete_snapshot() {
 
     assert!(s.problems.is_empty(), "{:?}", s.problems);
     assert!(!s.stale);
-    assert_eq!(s.days.len(), 14);
+    assert_eq!(s.days.len(), 23); // 7 days back, 16 ahead
     assert_eq!(s.days[0].date, "2026-11-07");
     assert_eq!(s.days[6].date, "2026-11-13");
     assert!(!s.days[6].is_forecast && s.days[7].is_forecast);
     assert_eq!(s.days[7].date, "2026-11-14");
     assert_eq!(s.days[13].date, "2026-11-20");
+    assert_eq!(s.days[22].date, "2026-11-29");
+    // NWS days keep NWS numbers; the model fills the NWS gap (18th–20th) and everything after.
+    assert!(s.days[7..11].iter().all(|d| !d.long_range));
+    assert!(s.days[11..].iter().all(|d| d.long_range && d.is_forecast));
+    assert!(close(s.days[12].snow_cm, 2.0));
+    assert!(close(s.days[18].snow_cm, 12.5));
+    assert_eq!(s.days[8].temp_hi_c, Some(-4.0)); // NWS temperature, not the model's
 
     // History: 0, 2", 0 (settled), gap, gap, 4", 6".
     let snow: Vec<Option<f64>> = s.days[..7].iter().map(|d| d.snow_cm).collect();
@@ -96,7 +104,7 @@ fn refresh_builds_a_complete_snapshot() {
     assert_eq!(s.fetched_at_epoch_s, now().timestamp());
 
     // It is saved, and shows on the home screen.
-    assert_eq!(st.snapshot(id.clone()).unwrap().days.len(), 14);
+    assert_eq!(st.snapshot(id.clone()).unwrap().days.len(), 23);
     assert!(st.cards()[0].snapshot.is_some());
 
     // Second refresh reuses the cached grid location and station.
@@ -128,7 +136,7 @@ fn resort_with_no_station_nearby_still_gets_a_forecast() {
     let s = st.refresh(killington.id.clone()).unwrap();
     assert!(s.problems.is_empty(), "{:?}", s.problems);
     assert_eq!(s.station, None);
-    assert_eq!(s.days.len(), 7);
+    assert_eq!(s.days.len(), 16);
     assert!(s.days.iter().all(|d| d.is_forecast));
     assert_eq!((s.last_24h_cm, s.last_7d_cm, s.depth_cm), (None, None, None));
     assert!(close(s.next_24h_cm, 4.8));
@@ -143,9 +151,9 @@ fn resort_with_no_station_nearby_still_gets_a_forecast() {
 
 #[test]
 fn one_failing_source_does_not_sink_the_others() {
-    for (pattern, word) in [("/gridpoints/", "forecast"), ("/data?", "SNOTEL"), ("/alerts/active", "alerts"), ("news.google.com", "News"), ("/products/types/AFD", "discussion")] {
+    for (pattern, word) in [("/gridpoints/", "forecast"), ("/data?", "SNOTEL"), ("/alerts/active", "alerts"), ("news.google.com", "News"), ("/products/types/AFD", "discussion"), ("open-meteo.com", "Long-range")] {
         let dir = tempfile::tempdir().unwrap();
-        let (st, _) = app(dir.path(), FakeHttp::new().fail(pattern, "HTTP 500").ok("/points/", point_json()).ok("/gridpoints/", grid_json()).ok("/alerts/active", alerts_json()).ok("/products/types/AFD", json!({"@graph": [{"@id": "https://api.weather.gov/products/abc"}]}).to_string()).ok("/products/abc", json!({"productText": AFD}).to_string()).ok("/stations?", stations_json()).ok("/data?", history_body()).ok("news.google.com", RSS));
+        let (st, _) = app(dir.path(), FakeHttp::new().fail(pattern, "HTTP 500").ok("/points/", point_json()).ok("/gridpoints/", grid_json()).ok("/alerts/active", alerts_json()).ok("/products/types/AFD", json!({"@graph": [{"@id": "https://api.weather.gov/products/abc"}]}).to_string()).ok("/products/abc", json!({"productText": AFD}).to_string()).ok("/stations?", stations_json()).ok("/data?", history_body()).ok("news.google.com", RSS).ok("open-meteo.com", crate::longrange::tests::gfs_json()));
         let id = add_vail(&st);
         let s = st.refresh(id).unwrap();
         assert_eq!(s.problems.len(), 1, "{pattern}: {:?}", s.problems);
@@ -153,14 +161,21 @@ fn one_failing_source_does_not_sink_the_others() {
         assert!(!s.stale);
         if pattern == "/gridpoints/" {
             assert_eq!(s.next_24h_cm, None);
-            assert_eq!(s.days.len(), 7);
+            // No NWS forecast: the model stands in for every forecast day, flagged.
+            assert_eq!(s.days.len(), 23);
+            assert!(s.days[7..].iter().all(|d| d.long_range));
             assert!(close(s.last_24h_cm, 15.24));
         } else {
             assert!(close(s.next_24h_cm, 4.8), "{pattern}");
         }
+        if pattern == "open-meteo.com" {
+            assert_eq!(s.days.len(), 14);
+            assert!(s.days.iter().all(|d| !d.long_range));
+            assert_eq!(s.days[12].snow_cm, None);
+        }
         if pattern == "/data?" {
             assert_eq!(s.last_24h_cm, None);
-            assert_eq!(s.days.len(), 7);
+            assert_eq!(s.days.len(), 16);
             assert_eq!(s.station.as_ref().unwrap().name, "Vail Mountain");
         }
     }
@@ -170,7 +185,7 @@ fn one_failing_source_does_not_sink_the_others() {
 fn malformed_responses_are_reported_not_fatal() {
     let dir = tempfile::tempdir().unwrap();
     let http = FakeHttp::new().ok("/gridpoints/", "<html>Service Unavailable</html>").ok("/data?", "[]").ok("/alerts/active", "{}");
-    let (st, _) = app(dir.path(), http.ok("/points/", point_json()).ok("/products/types/AFD", "{}").ok("/stations?", stations_json()).ok("news.google.com", "not xml at all"));
+    let (st, _) = app(dir.path(), http.ok("/points/", point_json()).ok("/products/types/AFD", "{}").ok("/stations?", stations_json()).ok("news.google.com", "not xml at all").ok("open-meteo.com", "{\"daily\":{\"time\":[]}}"));
     let id = add_vail(&st);
     let s = st.refresh(id).unwrap();
     assert_eq!(s.next_24h_cm, None);
@@ -179,7 +194,7 @@ fn malformed_responses_are_reported_not_fatal() {
     assert_eq!(s.outlook, None);
     // Empty SNOTEL data: seven history days, all unknown.
     assert_eq!(s.days.len(), 7);
-    assert!(s.days.iter().all(|d| d.snow_cm.is_none() && d.depth_cm.is_none()));
+    assert!(s.days.iter().all(|d| !d.is_forecast && d.snow_cm.is_none() && d.depth_cm.is_none()));
     assert_eq!(s.problems.len(), 2, "{:?}", s.problems);
 }
 
@@ -195,7 +210,7 @@ fn offline_refresh_returns_saved_data_marked_stale() {
     let (st, _) = app(dir.path(), FakeHttp::new());
     let s = st.refresh(id.clone()).unwrap();
     assert!(s.stale);
-    assert_eq!(s.days.len(), 14);
+    assert_eq!(s.days.len(), 23);
     assert!(!s.problems.is_empty());
     // The saved copy itself is not overwritten with the stale flag.
     assert!(!st.snapshot(id).unwrap().stale);
@@ -235,7 +250,7 @@ fn stale_grid_address_is_looked_up_again() {
         id
     };
     let moved = point_json().replace("GJT/173,120", "BOU/20,57");
-    let http = FakeHttp::new().fail("GJT/173,120", "HTTP 404").ok("/points/", moved).ok("BOU/20,57", grid_json()).ok("/alerts/active", alerts_json()).ok("/data?", history_body()).ok("news.google.com", RSS).ok("/products/types/AFD", "{\"@graph\":[]}");
+    let http = FakeHttp::new().fail("GJT/173,120", "HTTP 404").ok("/points/", moved).ok("BOU/20,57", grid_json()).ok("/alerts/active", alerts_json()).ok("/data?", history_body()).ok("news.google.com", RSS).ok("/products/types/AFD", "{\"@graph\":[]}").ok("open-meteo.com", crate::longrange::tests::gfs_json());
     let (st, http) = app(dir.path(), http);
     let s = st.refresh(id.clone()).unwrap();
     assert!(close(s.next_24h_cm, 4.8), "{:?}", s.problems);
@@ -308,10 +323,27 @@ fn settings_are_clamped_and_saved() {
 
 #[test]
 fn history_totals_handle_gaps() {
-    let day = |s: Option<f64>, d: Option<f64>| DaySnow { date: "x".into(), snow_cm: s, depth_cm: d, temp_hi_c: None, temp_lo_c: None, is_forecast: false };
+    let day = |s: Option<f64>, d: Option<f64>| DaySnow { date: "x".into(), snow_cm: s, depth_cm: d, temp_hi_c: None, temp_lo_c: None, is_forecast: false, long_range: false };
     assert_eq!(history_totals(&[]), (None, None, None, None));
     let h = [day(Some(1.0), Some(50.0)), day(None, None), day(None, None), day(None, None)];
     assert_eq!(history_totals(&h), (None, None, Some(1.0), Some(50.0)));
+}
+
+#[test]
+fn update_check_and_download() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = "https://github.com/HammerJones/MGBW-RFID/releases/download/build-42/SnowTrack.apk";
+    let release = json!({"tag_name": "build-42", "name": "SnowTrack 0.1.42", "body": "notes", "assets": [{"name": "SnowTrack.apk", "browser_download_url": url}]}).to_string();
+    let (st, _) = app(dir.path(), FakeHttp::new().ok("api.github.com/repos/", release).ok("build-42/SnowTrack.apk", "PK\u{3}\u{4}apk"));
+    assert_eq!(st.check_update(42).unwrap(), None);
+    let found = st.check_update(7).unwrap().unwrap();
+    assert_eq!(found.build, 42);
+    let dest = dir.path().join("u").join("SnowTrack.apk");
+    st.download_update(found.apk_url, dest.to_string_lossy().to_string()).unwrap();
+    assert!(dest.exists());
+    assert!(matches!(st.download_update("https://evil.example/a.apk".into(), "/tmp/x".into()), Err(SnowError::Network { .. })));
+    let (offline, _) = app(dir.path(), FakeHttp::new());
+    assert!(matches!(offline.check_update(1), Err(SnowError::Network { .. })));
 }
 
 #[test]

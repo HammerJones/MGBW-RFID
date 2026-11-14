@@ -9,6 +9,8 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # publishes the release the app updates itself from
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -48,15 +50,29 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
       - run: cargo install cargo-ndk --locked
 
-      # Keep the same signing key between builds so new versions install over old ones.
+      # Updates only install over a build signed with the same key. For a key
+      # that can never be lost, add a repository secret SNOWTRACK_KEYSTORE_B64
+      # (base64 of a keystore with alias androiddebugkey, passwords "android").
+      # Without it the key lives in the Actions cache, which GitHub clears
+      # after 7 days without a build.
+      - name: Signing key from secret
+        id: secretkey
+        env:
+          KEYSTORE_B64: ${{ secrets.SNOWTRACK_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/snowtrack.keystore
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Restore signing key
         id: key
+        if: steps.secretkey.outputs.found != 'true'
         uses: actions/cache@v4
         with:
           path: android/snowtrack.keystore
           key: snowtrack-signing-key-v1
       - name: Make a signing key (first build only)
-        if: steps.key.outputs.cache-hit != 'true'
+        if: steps.secretkey.outputs.found != 'true' && steps.key.outputs.cache-hit != 'true'
         run: |
           echo "::warning title=New signing key::This APK is signed with a NEW key, so it won't install over a previous version. Uninstall SnowTrack first, then install this one."
           keytool -genkeypair -keystore android/snowtrack.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=SnowTrack"
@@ -91,10 +107,21 @@ jobs:
         with:
           name: snowtrack-android
           path: apk/SnowTrack.apk
+      # The app checks the latest release and downloads this APK to update itself.
+      - name: Publish release for in-app updates
+        if: github.ref == 'refs/heads/snowtrack' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" apk/SnowTrack.apk \
+            --title "SnowTrack 0.1.${{ github.run_number }}" \
+            --notes "$(git log -1 --pretty=%s)" \
+            --target "$GITHUB_SHA" --latest
 
   # Installs the app on an emulator, adds a resort and saves screenshots.
   # Never blocks the APK: it is a look at the running app, not a gate.
   screenshots:
+    needs: android
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:

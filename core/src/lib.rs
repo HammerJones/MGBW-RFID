@@ -9,6 +9,7 @@ pub mod catalog;
 pub mod geo;
 pub mod http;
 pub mod interval;
+pub mod longrange;
 pub mod model;
 pub mod news;
 pub mod notify;
@@ -16,6 +17,7 @@ pub mod nws;
 pub mod radar;
 pub mod snotel;
 pub mod store;
+pub mod update;
 
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Utc};
 use http::{Http, UreqHttp};
@@ -126,12 +128,13 @@ impl SnowTrack {
         let today = local_today(now, tz, resort.lon);
 
         // 3. Everything else in parallel.
-        let (grid, alerts, outlook, history, news) = std::thread::scope(|s| {
+        let (grid, alerts, outlook, history, news, model) = std::thread::scope(|s| {
             let grid = s.spawn(|| point.as_ref().map(|p| nws::fetch_grid(http, p)));
             let alerts = s.spawn(|| nws::fetch_alerts(http, resort.lat, resort.lon));
             let outlook = s.spawn(|| point.as_ref().map(|p| nws::fetch_outlook(http, &p.office)));
             let history = s.spawn(|| station.as_ref().map(|st| snotel::fetch_history(http, st, today, HISTORY_DAYS)));
             let news = s.spawn(|| news::fetch_news(http, &resort));
+            let model = s.spawn(|| longrange::fetch(http, resort.lat, resort.lon));
             let join = |what: &str| format!("{what} crashed while loading");
             (
                 grid.join().unwrap_or_else(|_| Some(Err(join("Forecast")))),
@@ -139,6 +142,7 @@ impl SnowTrack {
                 outlook.join().unwrap_or_else(|_| Some(Err(join("Outlook")))),
                 history.join().unwrap_or_else(|_| Some(Err(join("Snow history")))),
                 news.join().unwrap_or_else(|_| Err(join("News"))),
+                model.join().unwrap_or_else(|_| Err(join("Long-range forecast"))),
             )
         });
 
@@ -159,6 +163,7 @@ impl SnowTrack {
         let outlook: Option<String> = outlook.and_then(|r| tally.take(r)).flatten();
         let history: Vec<DaySnow> = history.and_then(|r| tally.take(r)).unwrap_or_default();
         let news: Vec<NewsItem> = tally.take(news).unwrap_or_default();
+        let model: Vec<longrange::ModelDay> = tally.take(model).unwrap_or_default();
         let Tally { successes, problems } = tally;
 
         if successes == 0 {
@@ -188,6 +193,8 @@ impl SnowTrack {
             };
             next = (nws::window_snow_cm(g, now, 24), nws::window_snow_cm(g, now, 72), nws::window_snow_cm(g, now, 168));
         }
+        // Beyond (and in gaps of) the NWS forecast, show the long-range model, flagged as such.
+        let forecast = longrange::merge(forecast, &model, today);
         let (last_24h_cm, last_72h_cm, last_7d_cm, depth_cm) = history_totals(&history);
 
         let mut days = history;
@@ -390,6 +397,17 @@ impl SnowTrack {
             notify_threshold_cm: if t.is_finite() { t.clamp(2.5, 150.0) } else { Settings::default().notify_threshold_cm },
         };
         let _ = self.store.save_state(&state);
+    }
+
+    /// Is there a newer build than `current_build` (the app's version code)?
+    /// Blocks on the network.
+    pub fn check_update(&self, current_build: u32) -> Result<Option<UpdateInfo>, SnowError> {
+        update::check(self.http.as_ref(), current_build).map_err(|msg| SnowError::Network { msg })
+    }
+
+    /// Download an update found by `check_update` to `dest_path`. Blocks on the network.
+    pub fn download_update(&self, apk_url: String, dest_path: String) -> Result<(), SnowError> {
+        update::download(self.http.as_ref(), &apk_url, std::path::Path::new(&dest_path)).map_err(|msg| SnowError::Network { msg })
     }
 
     /// Raster tile URL (WMS; the app fills in `{bbox-epsg-3857}`) for the radar layer covering this location;

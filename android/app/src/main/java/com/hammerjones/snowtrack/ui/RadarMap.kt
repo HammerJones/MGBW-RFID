@@ -8,11 +8,15 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,7 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -99,11 +107,12 @@ private fun frameLabel(time: String?): String {
 
 /**
  * Live NOAA radar centred on a resort. Shows the latest frame straight away,
- * then loads the recent frames so the user can play the last couple of hours.
+ * then loads the recent frames so the user can play the last couple of hours
+ * or drag the bar underneath to scrub through them.
  */
 @SuppressLint("ClickableViewAccessibility")
 @Composable
-fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Modifier) {
+fun RadarMap(lat: Double, lon: Double, core: SnowTrack, mapHeight: Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -187,9 +196,9 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
         }
     }
 
-    // Add one hidden layer per frame the first time the user presses play.
-    LaunchedEffect(frames, playing) {
-        if (!playing || frameOverlays.isNotEmpty() || frames.isEmpty()) return@LaunchedEffect
+    // One hidden layer per frame; a layer only downloads tiles once it is shown.
+    LaunchedEffect(frames) {
+        if (frameOverlays.isNotEmpty() || frames.isEmpty()) return@LaunchedEffect
         val region = if (lat > 50) "ak" else if (lat < 23) "hi" else "us"
         val added = frames.map { time ->
             val name = "radar-$region-" + time.filter { it.isLetterOrDigit() }
@@ -216,41 +225,57 @@ fun RadarMap(lat: Double, lon: Double, core: SnowTrack, modifier: Modifier = Mod
         mapView.invalidate()
     }
 
-    Box(modifier.clip(RoundedCornerShape(20.dp))) {
-        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-        Row(
-            Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f))
-                .padding(start = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    Column(modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(mapHeight).clip(RoundedCornerShape(20.dp))) {
+            AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
             Text(
                 frameLabel(frames.getOrNull(index)),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
-            if (frames.size > 1) {
+            Text(
+                "Map: USGS  ·  Radar: NOAA",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        if (frames.size > 1) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = {
                     playing = !playing
                     if (!playing) index = -1
-                }) { Text(if (playing) "Stop" else "Play loop") }
-            } else {
-                Box(Modifier.padding(vertical = 14.dp, horizontal = 4.dp))
+                }) { Text(if (playing) "Stop" else "Play") }
+                // Drag to scrub: far left is the oldest frame, far right is now.
+                Slider(
+                    value = (if (index < 0) frames.lastIndex else index).toFloat(),
+                    onValueChange = {
+                        playing = false
+                        val picked = it.roundToInt().coerceIn(0, frames.lastIndex)
+                        index = if (picked == frames.lastIndex) -1 else picked
+                    },
+                    valueRange = 0f..frames.lastIndex.toFloat(),
+                    steps = (frames.size - 2).coerceAtLeast(0),
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Radar time" },
+                )
+                Text(
+                    "Now",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp),
+                )
             }
         }
-        Text(
-            "Map: USGS  ·  Radar: NOAA",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(6.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        )
     }
 }

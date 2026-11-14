@@ -72,6 +72,14 @@ object Format {
         date
     }
 
+    /** Day of the month for a chart column; the 1st carries the month (`12/1`). */
+    fun chartDate(date: String): String = try {
+        val d = LocalDate.parse(date)
+        if (d.dayOfMonth == 1) "${d.monthValue}/1" else d.dayOfMonth.toString()
+    } catch (e: Exception) {
+        ""
+    }
+
     /** `Sat 14`. */
     fun dayAndDate(date: String, today: LocalDate): String = try {
         val d = LocalDate.parse(date)

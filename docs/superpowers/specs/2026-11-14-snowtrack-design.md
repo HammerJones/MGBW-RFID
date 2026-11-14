@@ -92,3 +92,17 @@ more, and re-arms once the forecast falls below half the threshold. The
 decision logic lives in Rust (`core/src/notify.rs`); Kotlin only posts.
 "Notifications" is therefore no longer a non-goal. The app now lives in
 `HammerJones/MGBW-RFID` (old contents removed) rather than `rfid`.
+
+## Added 2026-11-14: long range, scrub bar, self-update
+
+- Charts scroll sideways and show the date under each day. Forecast days the
+  NWS grid does not cover, out to 16 days, come from NOAA's GFS model via
+  Open-Meteo and are flagged `long_range` (drawn fainter, labelled a rough
+  guide). NWS numbers always win where they exist; headline totals and
+  notifications use NWS only.
+- The radar has a scrub bar under the map (10 frames, about two hours).
+- Each build on `snowtrack`/`main` is published as a GitHub release tagged
+  `build-<run number>`. The app checks the latest release (at most every six
+  hours, or on demand in Settings), downloads the APK through the Rust core
+  (only from this repo's release URLs, and only if it is a real zip), and
+  hands it to Android's installer. Android always asks the user to confirm.

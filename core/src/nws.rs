@@ -143,6 +143,7 @@ pub fn forecast_days<Z: TimeZone>(grid: &Grid, tz: &Z, today: NaiveDate, n_days:
                 temp_hi_c: temps.get(&date).map(|t| t.0),
                 temp_lo_c: temps.get(&date).map(|t| t.1),
                 is_forecast: true,
+                long_range: false,
             }
         })
         .collect()

@@ -65,5 +65,8 @@ class FormatTest {
         assertEquals("Sun", Format.dayLabel("2026-11-15", today))
         assertEquals("Fri 13", Format.dayAndDate("2026-11-13", today))
         assertEquals("garbage", Format.dayLabel("garbage", today))
+        assertEquals("14", Format.chartDate("2026-11-14"))
+        assertEquals("12/1", Format.chartDate("2026-12-01"))
+        assertEquals("", Format.chartDate("garbage"))
     }
 }

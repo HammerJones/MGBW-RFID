@@ -87,7 +87,9 @@ fn storm_body(snap: &Snapshot, metric: bool) -> String {
     if let Some(best) = snap
         .days
         .iter()
-        .filter(|d| d.is_forecast)
+        // Only the local forecast for the days the notice is about.
+        .filter(|d| d.is_forecast && !d.long_range)
+        .take(4)
         .filter_map(|d| d.snow_cm.map(|s| (s, &d.date)))
         .max_by(|a, b| a.0.total_cmp(&b.0))
         .filter(|b| b.0 > 0.0)
@@ -110,8 +112,8 @@ mod tests {
         Snapshot {
             resort: crate::news::tests::vail(),
             days: vec![
-                DaySnow { date: "2026-11-14".into(), snow_cm: Some(5.0), depth_cm: None, temp_hi_c: None, temp_lo_c: None, is_forecast: true },
-                DaySnow { date: "2026-11-15".into(), snow_cm: Some(20.0), depth_cm: None, temp_hi_c: None, temp_lo_c: None, is_forecast: true },
+                DaySnow { date: "2026-11-14".into(), snow_cm: Some(5.0), depth_cm: None, temp_hi_c: None, temp_lo_c: None, is_forecast: true, long_range: false },
+                DaySnow { date: "2026-11-15".into(), snow_cm: Some(20.0), depth_cm: None, temp_hi_c: None, temp_lo_c: None, is_forecast: true, long_range: false },
             ],
             last_24h_cm: None, last_72h_cm: None, last_7d_cm: None,
             next_24h_cm: Some(5.08), next_72h_cm: next72, next_7d_cm: next72,

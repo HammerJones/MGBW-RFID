@@ -11,6 +11,8 @@ pub struct HttpError(pub String);
 
 pub trait Http: Send + Sync {
     fn get(&self, url: &str) -> Result<String, HttpError>;
+    /// Save a (possibly large, binary) response to `dest`. Returns its size.
+    fn download(&self, url: &str, dest: &std::path::Path) -> Result<u64, HttpError>;
 }
 
 pub struct UreqHttp {
@@ -47,6 +49,26 @@ impl Http for UreqHttp {
             .limit(8 * 1024 * 1024)
             .read_to_string()
             .map_err(|e| HttpError(e.to_string()))
+    }
+
+    fn download(&self, url: &str, dest: &std::path::Path) -> Result<u64, HttpError> {
+        let _ = &self.agent;
+        self.download_inner(url, dest)
+    }
+}
+
+impl UreqHttp {
+    fn download_inner(&self, url: &str, dest: &std::path::Path) -> Result<u64, HttpError> {
+        // Big files need longer than the 20 s allowed for data requests.
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(600)))
+            .user_agent(USER_AGENT)
+            .build()
+            .into();
+        let mut resp = agent.get(url).call().map_err(|e| HttpError(e.to_string()))?;
+        let mut file = std::fs::File::create(dest).map_err(|e| HttpError(e.to_string()))?;
+        let mut reader = resp.body_mut().with_config().limit(300 * 1024 * 1024).reader();
+        std::io::copy(&mut reader, &mut file).map_err(|e| HttpError(e.to_string()))
     }
 }
 
@@ -88,6 +110,12 @@ pub mod fake {
                 }
             }
             Err(HttpError(format!("no fake response for {url}")))
+        }
+
+        fn download(&self, url: &str, dest: &std::path::Path) -> Result<u64, HttpError> {
+            let body = self.get(url)?;
+            std::fs::write(dest, &body).map_err(|e| HttpError(e.to_string()))?;
+            Ok(body.len() as u64)
         }
     }
 

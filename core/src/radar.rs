@@ -3,7 +3,7 @@
 use crate::http::Http;
 
 const GEOSERVER: &str = "https://opengeo.ncep.noaa.gov/geoserver";
-pub const MAX_FRAMES: usize = 8;
+pub const MAX_FRAMES: usize = 10;
 
 /// NOAA publishes a separate mosaic for each region.
 pub fn region(lat: f64, lon: f64) -> &'static str {

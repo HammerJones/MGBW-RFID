@@ -105,7 +105,7 @@ fun ResortScreen(vm: SnowViewModel, id: String) {
                 Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                RadarMap(card.resort.lat, card.resort.lon, vm.core, Modifier.fillMaxWidth().height(300.dp))
+                RadarMap(card.resort.lat, card.resort.lon, vm.core, mapHeight = 300.dp)
 
                 if (snap == null) {
                     Text(
@@ -118,7 +118,7 @@ fun ResortScreen(vm: SnowViewModel, id: String) {
                     snap.alerts.forEach { AlertCard(it) }
                     Totals(snap, metric)
                     Section("Snow by day") {
-                        SnowChart(snap.days, metric, barAreaHeight = 120.dp, showValues = true)
+                        SnowChart(snap.days, metric, barAreaHeight = 120.dp, showValues = true, columnWidth = 44.dp)
                         Spacer(Modifier.height(8.dp))
                         ChartLegend()
                     }
@@ -230,6 +230,15 @@ private fun DayTable(snap: Snapshot, metric: Boolean) {
                     fontWeight = FontWeight.Bold,
                 )
             }
+            if (day.longRange && (i == 0 || !snap.days[i - 1].longRange)) {
+                Text(
+                    "LONG RANGE  ·  GFS model, a rough guide",
+                    Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             DayRow(day, today, metric)
         }
@@ -248,6 +257,7 @@ private fun DayRow(day: DaySnow, today: LocalDate, metric: Boolean) {
             fontWeight = if (snowing) FontWeight.Bold else FontWeight.Normal,
             color = when {
                 !snowing -> MaterialTheme.colorScheme.onSurfaceVariant
+                day.longRange -> MaterialTheme.colorScheme.tertiary
                 day.isForecast -> MaterialTheme.colorScheme.secondary
                 else -> MaterialTheme.colorScheme.primary
             },
@@ -268,7 +278,7 @@ private fun Attribution(snap: Snapshot, metric: Boolean) {
         "No SNOTEL snow station within range of this resort, so past snowfall isn't available."
     }
     Text(
-        "$history Forecast: National Weather Service.",
+        "$history Forecast: National Weather Service. Long-range days: NOAA's GFS model via Open-Meteo, useful for spotting a storm pattern but not for amounts.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 4.dp),

@@ -146,6 +146,7 @@ pub fn history_from_depths(depths: &BTreeMap<NaiveDate, f64>, today: NaiveDate, 
                 temp_hi_c: None,
                 temp_lo_c: None,
                 is_forecast: false,
+                long_range: false,
             }
         })
         .collect()

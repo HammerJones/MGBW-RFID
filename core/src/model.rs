@@ -24,6 +24,10 @@ pub struct DaySnow {
     pub temp_hi_c: Option<f64>,
     pub temp_lo_c: Option<f64>,
     pub is_forecast: bool,
+    /// True for forecast days taken from the long-range GFS model rather
+    /// than the local NWS forecast: a rough guide only.
+    #[serde(default)]
+    pub long_range: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -107,6 +111,15 @@ pub struct SnowNotice {
     pub tag: String,
     pub title: String,
     pub body: String,
+}
+
+/// A newer build of the app that can be downloaded.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub build: u32,
+    pub apk_url: String,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error, uniffi::Error)]
